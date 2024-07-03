@@ -13,6 +13,53 @@ var BotToken string
 var ApplicationID string
 var GuildID string
 
+var (
+	commands = []*discordgo.ApplicationCommand{
+		{
+			Name:        "hello",
+			Description: "Say Hello",
+		},
+		{
+			Name:        "options",
+			Description: "Command for demonstrating options",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "input",
+					Description: "Input your name",
+					Required:    true,
+				},
+			},
+		},
+	}
+
+	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"hello": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Hello Command! 😃",
+				},
+			})
+		},
+		"options": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			options := i.ApplicationCommandData().Options
+
+			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+			for _, option := range options {
+				optionMap[option.Name] = option
+			}
+
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("Hello %s! 😃", optionMap["input"].StringValue()),
+				},
+			})
+		},
+	}
+)
+
 func checkNilErr(e error) {
 	if e != nil {
 		log.Fatal(e.Error())
@@ -27,12 +74,18 @@ func Run() {
 
 	// add a event handler
 	discord.AddHandler(newMessage)
-	discord.AddHandler(handleSlashCommand)
-
-	discord.ApplicationCommandCreate(ApplicationID, GuildID, &discordgo.ApplicationCommand{
-		Name:        "hello",
-		Description: "Say Hello",
+	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+		}
 	})
+
+	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
+	for i, command := range commands {
+		cmd, err := discord.ApplicationCommandCreate(ApplicationID, GuildID, command)
+		checkNilErr(err)
+		registeredCommands[i] = cmd
+	}
 
 	// open session
 	err = discord.Open()
@@ -67,18 +120,5 @@ func newMessage(session *discordgo.Session, message *discordgo.MessageCreate) {
 	case strings.Contains(message.Content, "!bye"):
 		session.ChannelMessageSend(message.ChannelID, "Good Bye👋")
 		// add more cases if required
-	}
-}
-
-// slash command
-func handleSlashCommand(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
-	switch interaction.ApplicationCommandData().Name {
-	case "hello":
-		session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Hello Slash Command! 😃",
-			},
-		})
 	}
 }
