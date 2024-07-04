@@ -1,12 +1,13 @@
 package bot
 
 import (
+	"errors"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 )
 
 var BotToken string
@@ -20,18 +21,6 @@ var (
 			Description: "Say Hello",
 		},
 		{
-			Name:        "options",
-			Description: "Command for demonstrating options",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "input",
-					Description: "Input your name",
-					Required:    true,
-				},
-			},
-		},
-		{
 			Name:        "submit",
 			Description: "Submit a link",
 			Options: []*discordgo.ApplicationCommandOption{
@@ -39,6 +28,12 @@ var (
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "link",
 					Description: "Link to submit",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionAttachment,
+					Name:        "screenshot",
+					Description: "Screenshot of problem solution",
 					Required:    true,
 				},
 			},
@@ -54,21 +49,6 @@ var (
 				},
 			})
 		},
-		"options": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			options := i.ApplicationCommandData().Options
-
-			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
-			for _, option := range options {
-				optionMap[option.Name] = option
-			}
-
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("Hello %s! 😃", optionMap["input"].StringValue()),
-				},
-			})
-		},
 
 		"submit": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			options := i.ApplicationCommandData().Options
@@ -78,6 +58,7 @@ var (
 				optionMap[option.Name] = option
 			}
 
+			// Markdown link conversion
 			link := optionMap["link"].StringValue()
 			markdown, err := ConvertLinkToMarkdown(link)
 			if err != nil {
@@ -90,10 +71,34 @@ var (
 				return
 			}
 
+			// attachment
+			attachmentID := optionMap["screenshot"].Value.(string)
+			attachmentUrl := i.ApplicationCommandData().Resolved.Attachments[attachmentID].URL
+
+			res, resError := http.DefaultClient.Get(attachmentUrl)
+			defer res.Body.Close()
+			if resError != nil {
+				log.Println(errors.New("could not get response from code explain bot"))
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Could not get response",
+					},
+				})
+				return
+			}
+
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: markdown,
+					Files: []*discordgo.File{
+						{
+							Name:        "screenshot.png",
+							ContentType: "image/png",
+							Reader:      res.Body,
+						},
+					},
 				},
 			})
 		},
@@ -113,7 +118,6 @@ func Run() {
 	checkNilErr(err)
 
 	// add a event handler
-	discord.AddHandler(newMessage)
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
 			h(s, i)
@@ -141,24 +145,4 @@ func Run() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
-}
-
-func newMessage(session *discordgo.Session, message *discordgo.MessageCreate) {
-
-	/* prevent bot responding to its own message
-	this is achived by looking into the message author id
-	if message.author.id is same as bot.author.id then just return
-	*/
-	if message.Author.ID == session.State.User.ID {
-		return
-	}
-
-	// respond to user message if it contains `!help` or `!bye`
-	switch {
-	case strings.Contains(message.Content, "!help"):
-		session.ChannelMessageSend(message.ChannelID, "Hello World😃")
-	case strings.Contains(message.Content, "!bye"):
-		session.ChannelMessageSend(message.ChannelID, "Good Bye👋")
-		// add more cases if required
-	}
 }
