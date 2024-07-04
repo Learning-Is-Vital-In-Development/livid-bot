@@ -31,6 +31,18 @@ var (
 				},
 			},
 		},
+		{
+			Name:        "submit",
+			Description: "Submit a link",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "link",
+					Description: "Link to submit",
+					Required:    true,
+				},
+			},
+		},
 	}
 
 	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
@@ -54,6 +66,34 @@ var (
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: fmt.Sprintf("Hello %s! 😃", optionMap["input"].StringValue()),
+				},
+			})
+		},
+
+		"submit": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			options := i.ApplicationCommandData().Options
+
+			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+			for _, option := range options {
+				optionMap[option.Name] = option
+			}
+
+			link := optionMap["link"].StringValue()
+			markdown, err := ConvertLinkToMarkdown(link)
+			if err != nil {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Error converting link to markdown",
+					},
+				})
+				return
+			}
+
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: markdown,
 				},
 			})
 		},
@@ -97,7 +137,7 @@ func Run() {
 	defer discord.Close() // close session, after function termination
 
 	// keep bot running untill there is NO os interruption (ctrl + C)
-	fmt.Println("Bot running....")
+	fmt.Println("Bot running.... Press CTRL + C to exit")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
