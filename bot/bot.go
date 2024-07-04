@@ -91,12 +91,25 @@ var (
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: markdown,
-					Files: []*discordgo.File{
+					Embeds: []*discordgo.MessageEmbed{
 						{
-							Name:        "screenshot.png",
-							ContentType: "image/png",
-							Reader:      res.Body,
+							Title: "New Submission! 🚀",
+							URL:   link,
+							Fields: []*discordgo.MessageEmbedField{
+								{
+									Name:  "Challenge",
+									Value: markdown,
+								},
+							},
+							Image: &discordgo.MessageEmbedImage{
+								URL: attachmentUrl,
+							},
+							Author: &discordgo.MessageEmbedAuthor{
+								Name:    i.Member.User.Username,
+								URL:     "https://discord.com/users/" + i.Member.User.ID,
+								IconURL: i.Member.User.AvatarURL(""),
+							},
+							Color: 0x9400D3,
 						},
 					},
 				},
