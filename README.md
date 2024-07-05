@@ -1,12 +1,6 @@
 # Livid Discord Bot
 
-## Getting Started
-
-```bash
-go run main.go
-```
-
-## env 설정
+## Prerequisite
 
 실행을 위해서는 다음과 같은 환경변수가 설정되어 있어야 합니다.
 
@@ -17,4 +11,22 @@ DISCORD_APPLICATION_ID="<YOUR_APPLICATION_ID>"
 DISCORD_GUILD_ID="<YOUR_GUILD_ID>" # 실행할 디스코드 서버 ID
 ```
 
-`BOT_TOKEN`, `APPLICATION_ID` 는 [Discord Developer Portal](https://discord.com/developers/applications) 에서 확인할 수 있습니다.
+봇에 기여하기 위해 토큰 정보가 필요할 경우는 관리자에게 문의해주세요.
+
+## Getting Started
+
+```bash
+go run main.go
+```
+
+or
+
+```bash
+# project path
+docker build -t livid-bot .
+docker run -d --name livid-bot \
+  -e DISCORD_BOT_TOKEN=$LIVID_BOT_TOKEN \
+  -e DISCORD_GUILD_ID=$LIVID_GUILD_ID \
+  -e DISCORD_APPLICATION_ID=$LIVID_APPLICATION_ID \
+  livid-bot
+```
