@@ -1,4 +1,4 @@
-# Livid Discord Bot
+# LIVID Discord Bot
 
 ## Prerequisite
 
