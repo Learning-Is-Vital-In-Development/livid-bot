@@ -23,8 +23,14 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		}
 
 		channelID := optionMap["channel"].ChannelValue(nil).ID
+		branch := optionMap["branch"].StringValue()
 		fromStr := optionMap["from"].StringValue()
 		toStr := optionMap["to"].StringValue()
+
+		if !isValidBranch(branch) {
+			respondError(s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
+			return
+		}
 
 		// Validate dates
 		fromDate, err := time.Parse("2006-01-02", fromStr)
@@ -43,15 +49,15 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		}
 
 		ctx := context.Background()
-		studies, err := studyRepo.FindAllActive(ctx)
+		studies, err := studyRepo.FindAllActiveByBranch(ctx, branch)
 		if err != nil {
-			log.Printf("Failed to find active studies: %v", err)
+			log.Printf("Failed to find active studies for branch %s: %v", branch, err)
 			respondError(s, i, "Failed to load studies.")
 			return
 		}
 
 		if len(studies) == 0 {
-			respondError(s, i, "No active studies found. Create studies first with /create-study.")
+			respondError(s, i, fmt.Sprintf("No active studies found in branch %s.", branch))
 			return
 		}
 
@@ -61,7 +67,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		}
 
 		// Build message
-		content := buildRecruitMessage(studies, fromDate, toDate)
+		content := buildRecruitMessage(branch, studies, fromDate, toDate)
 
 		// Send message to specified channel
 		msg, err := s.ChannelMessageSend(channelID, content)
@@ -112,9 +118,10 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 	}
 }
 
-func buildRecruitMessage(studies []study.Study, from, to time.Time) string {
+func buildRecruitMessage(branch string, studies []study.Study, from, to time.Time) string {
 	var b strings.Builder
 	b.WriteString("@everyone 스터디 모집이 시작되었습니다!\n")
+	b.WriteString(fmt.Sprintf("대상 분기: **%s**\n", branch))
 	b.WriteString("참여를 원하시면 이모지로 참여 의사를 표현해주세요!\n\n")
 
 	for idx, st := range studies {

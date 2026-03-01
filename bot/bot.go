@@ -43,6 +43,7 @@ func Run(cfg Config) {
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
+		"recruit":       newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {

@@ -74,7 +74,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 		}
 		reservation.Commit()
 
-		if err := studyRepo.Archive(ctx, st.Name); err != nil {
+		if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
 			log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
 			if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
 				log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
@@ -194,7 +194,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 			}
 			reservation.Commit()
 
-			if err := studyRepo.Archive(ctx, st.Name); err != nil {
+			if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
 				log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
 				if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
 					log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)

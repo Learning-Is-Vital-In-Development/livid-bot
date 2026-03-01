@@ -18,7 +18,18 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 			optionMap[opt.Name] = opt
 		}
 
-		name := optionMap["name"].StringValue()
+		branch := optionMap["branch"].StringValue()
+		if !isValidBranch(branch) {
+			respondError(s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
+			return
+		}
+
+		name := normalizeStudyName(optionMap["name"].StringValue())
+		if name == "" {
+			respondError(s, i, "Study name is empty after normalization. Please provide a valid name.")
+			return
+		}
+
 		description := ""
 		if opt, ok := optionMap["description"]; ok {
 			description = opt.StringValue()
@@ -34,8 +45,9 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 		}
 
 		// Create Discord channel
+		channelName := buildStudyChannelName(branch, name)
 		channel, err := s.GuildChannelCreateComplex(guildID, discordgo.GuildChannelCreateData{
-			Name:     name,
+			Name:     channelName,
 			Type:     discordgo.ChannelTypeGuildText,
 			ParentID: categoryID,
 		})
@@ -62,7 +74,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 
 		// Save to DB
 		ctx := context.Background()
-		_, err = studyRepo.Create(ctx, name, description, channel.ID, role.ID)
+		_, err = studyRepo.Create(ctx, branch, name, description, channel.ID, role.ID)
 		if err != nil {
 			log.Printf("Failed to save study to DB: %v", err)
 			// Compensate: delete channel and role
@@ -72,15 +84,15 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 			if delErr := s.GuildRoleDelete(guildID, role.ID); delErr != nil {
 				log.Printf("Failed to clean up role %s: %v", role.ID, delErr)
 			}
-			respondError(s, i, "Failed to save study. Duplicate name?")
+			respondError(s, i, "Failed to save study. Duplicate name in same branch?")
 			return
 		}
 
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Study **%s** created!\nChannel: <#%s>\nRole: <@&%s>",
-					name, channel.ID, role.ID),
+				Content: fmt.Sprintf("Study **%s** created in branch **%s**!\nChannel: <#%s>\nRole: <@&%s>",
+					name, branch, channel.ID, role.ID),
 			},
 		})
 	}
