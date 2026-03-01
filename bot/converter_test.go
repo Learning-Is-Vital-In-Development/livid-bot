@@ -33,7 +33,12 @@ func TestConvertLinkToMarkdown(t *testing.T) {
 	for _, tc := range test {
 		actual, err := ConvertLinkToMarkdown(tc.link)
 		if tc.hasError {
-			// TODO
+			if err == nil {
+				t.Errorf("Expected error but got nil for link: %s", tc.link)
+			}
+			if actual != tc.expected {
+				t.Errorf("Expected %s but got %s", tc.expected, actual)
+			}
 		} else {
 			if err != nil {
 				t.Errorf("Expected no error but got %v", err)
