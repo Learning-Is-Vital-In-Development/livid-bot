@@ -37,7 +37,9 @@ func Run(cfg Config) {
 		"hello":        handleHello,
 		"submit":       handleSubmit,
 		"create-study": newCreateStudyHandler(cfg.StudyRepo),
-		"recruit":      newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
+		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
+		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
+		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
