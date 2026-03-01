@@ -15,6 +15,7 @@ import (
 
 const discordMessageLimit = 2000
 const archiveAutocompleteMaxChoices = 25
+const archiveAutocompleteChoiceNameLimit = 100
 
 type archiveFailure struct {
 	studyName string
@@ -59,7 +60,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 			return
 		}
 
-		targetCategoryID, targetCategoryName, err := allocator.Reserve()
+		targetCategoryID, targetCategoryName, reservation, err := allocator.Reserve()
 		if err != nil {
 			log.Printf("Failed to reserve archive category: %v", err)
 			respondError(s, i, "Failed to prepare archive category.")
@@ -71,6 +72,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 			respondError(s, i, "Failed to move study channel to archive category.")
 			return
 		}
+		reservation.Commit()
 
 		if err := studyRepo.Archive(ctx, st.Name); err != nil {
 			log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
@@ -79,6 +81,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 				respondError(s, i, "Failed to archive study and rollback failed. Please check channel/category state manually.")
 				return
 			}
+			reservation.Release()
 			respondError(s, i, "Failed to archive study. Channel move was rolled back.")
 			return
 		}
@@ -177,7 +180,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 			}
 			originalParentID := channel.ParentID
 
-			targetCategoryID, targetCategoryName, err := allocator.Reserve()
+			targetCategoryID, targetCategoryName, reservation, err := allocator.Reserve()
 			if err != nil {
 				log.Printf("Failed to reserve archive category for study %q: %v", st.Name, err)
 				failures = append(failures, archiveFailure{studyName: st.Name, reason: "archive category unavailable"})
@@ -189,12 +192,15 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 				failures = append(failures, archiveFailure{studyName: st.Name, reason: "channel move failed"})
 				continue
 			}
+			reservation.Commit()
 
 			if err := studyRepo.Archive(ctx, st.Name); err != nil {
 				log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
 				if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
 					log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
 					warnings = append(warnings, fmt.Sprintf("%s: rollback failed", st.Name))
+				} else {
+					reservation.Release()
 				}
 				failures = append(failures, archiveFailure{studyName: st.Name, reason: "db archive failed"})
 				continue
@@ -318,7 +324,7 @@ func buildArchiveStudyAutocompleteChoices(studies []study.Study, query string, l
 			}
 		}
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  fmt.Sprintf("%s (<#%s>)", st.Name, st.ChannelID),
+			Name:  buildArchiveAutocompleteChoiceName(st.Name, st.ChannelID),
 			Value: st.ChannelID,
 		})
 		if len(choices) >= limit {
@@ -337,6 +343,15 @@ func respondArchiveAutocomplete(s *discordgo.Session, i *discordgo.InteractionCr
 	}); err != nil {
 		log.Printf("Failed to respond archive-study autocomplete: %v", err)
 	}
+}
+
+func buildArchiveAutocompleteChoiceName(studyName, channelID string) string {
+	suffix := fmt.Sprintf(" (<#%s>)", channelID)
+	maxStudyNameLength := archiveAutocompleteChoiceNameLimit - utf8.RuneCountInString(suffix)
+	if maxStudyNameLength <= 0 {
+		return truncateForDiscord(suffix, archiveAutocompleteChoiceNameLimit)
+	}
+	return truncateForDiscord(studyName, maxStudyNameLength) + suffix
 }
 
 func truncateForDiscord(message string, maxLength int) string {

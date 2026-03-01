@@ -3,6 +3,7 @@ package bot
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/study"
@@ -103,5 +104,25 @@ func TestBuildArchiveStudyAutocompleteChoices(t *testing.T) {
 	limited := buildArchiveStudyAutocompleteChoices(studies, "", 2)
 	if len(limited) != 2 {
 		t.Fatalf("expected limited choices count=2, got %d", len(limited))
+	}
+}
+
+func TestBuildArchiveStudyAutocompleteChoicesNameLimit(t *testing.T) {
+	longName := strings.Repeat("a", 200)
+	studies := []study.Study{
+		{Name: longName, ChannelID: "1234567890"},
+	}
+
+	choices := buildArchiveStudyAutocompleteChoices(studies, "", 25)
+	if len(choices) != 1 {
+		t.Fatalf("expected one choice, got %d", len(choices))
+	}
+
+	label := choices[0].Name
+	if utf8.RuneCountInString(label) > archiveAutocompleteChoiceNameLimit {
+		t.Fatalf("choice label exceeds limit: %d", utf8.RuneCountInString(label))
+	}
+	if !strings.HasSuffix(label, " (<#1234567890>)") {
+		t.Fatalf("choice label suffix missing channel info: %s", label)
 	}
 }

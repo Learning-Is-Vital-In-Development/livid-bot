@@ -85,3 +85,25 @@ func TestPlanArchiveCategoryAssignments(t *testing.T) {
 		t.Fatalf("unexpected category use counts: %+v", plan.CategoryUseCounts)
 	}
 }
+
+func TestArchiveCategoryReservationCommitAndRelease(t *testing.T) {
+	slot := archiveCategorySlot{ChannelCount: 10}
+	reservation := &archiveCategoryReservation{slot: &slot}
+
+	reservation.Release()
+	if slot.ChannelCount != 10 {
+		t.Fatalf("release before commit should not change count, got %d", slot.ChannelCount)
+	}
+
+	reservation.Commit()
+	reservation.Commit()
+	if slot.ChannelCount != 11 {
+		t.Fatalf("commit should increase count once, got %d", slot.ChannelCount)
+	}
+
+	reservation.Release()
+	reservation.Release()
+	if slot.ChannelCount != 10 {
+		t.Fatalf("release should decrease count once after commit, got %d", slot.ChannelCount)
+	}
+}
