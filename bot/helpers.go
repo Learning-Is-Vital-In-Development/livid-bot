@@ -72,23 +72,6 @@ func interactionCommandName(i *discordgo.InteractionCreate) string {
 	return data.Name
 }
 
-func interactionAuthor(i *discordgo.InteractionCreate) *discordgo.MessageEmbedAuthor {
-	var user *discordgo.User
-	if i.Member != nil && i.Member.User != nil {
-		user = i.Member.User
-	} else if i.User != nil {
-		user = i.User
-	}
-	if user == nil {
-		return &discordgo.MessageEmbedAuthor{Name: "Unknown"}
-	}
-	return &discordgo.MessageEmbedAuthor{
-		Name:    user.Username,
-		URL:     "https://discord.com/users/" + user.ID,
-		IconURL: user.AvatarURL(""),
-	}
-}
-
 func interactionUserID(i *discordgo.InteractionCreate) string {
 	if i == nil {
 		return "unknown"
