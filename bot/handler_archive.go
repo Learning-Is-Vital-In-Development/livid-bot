@@ -10,9 +10,11 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
+	"livid-bot/study"
 )
 
 const discordMessageLimit = 2000
+const archiveAutocompleteMaxChoices = 25
 
 type archiveFailure struct {
 	studyName string
@@ -27,24 +29,24 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 			optionMap[opt.Name] = opt
 		}
 
-		name := optionMap["name"].StringValue()
+		channelID := optionMap["channel"].StringValue()
 		ctx := context.Background()
 
-		st, err := studyRepo.FindByName(ctx, name)
+		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
-			log.Printf("Failed to find study %q: %v", name, err)
-			respondError(s, i, fmt.Sprintf("Study %q not found.", name))
+			log.Printf("Failed to find study by channel %q: %v", channelID, err)
+			respondError(s, i, "No study found for the selected channel.")
 			return
 		}
 
 		if st.Status != "active" {
-			respondError(s, i, fmt.Sprintf("Study %q is already archived.", name))
+			respondError(s, i, fmt.Sprintf("Study %q is already archived.", st.Name))
 			return
 		}
 
 		channel, err := s.Channel(st.ChannelID)
 		if err != nil {
-			log.Printf("Failed to load channel %s for study %q: %v", st.ChannelID, name, err)
+			log.Printf("Failed to load channel %s for study %q: %v", st.ChannelID, st.Name, err)
 			respondError(s, i, "Failed to load study channel. Archive aborted.")
 			return
 		}
@@ -65,15 +67,15 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 		}
 
 		if _, err := s.ChannelEdit(st.ChannelID, &discordgo.ChannelEdit{ParentID: targetCategoryID}); err != nil {
-			log.Printf("Failed to move channel %s for study %q to %s: %v", st.ChannelID, name, targetCategoryName, err)
+			log.Printf("Failed to move channel %s for study %q to %s: %v", st.ChannelID, st.Name, targetCategoryName, err)
 			respondError(s, i, "Failed to move study channel to archive category.")
 			return
 		}
 
-		if err := studyRepo.Archive(ctx, name); err != nil {
-			log.Printf("Failed to archive study %q in DB after move: %v", name, err)
+		if err := studyRepo.Archive(ctx, st.Name); err != nil {
+			log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
 			if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
-				log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, name, rollbackErr)
+				log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
 				respondError(s, i, "Failed to archive study and rollback failed. Please check channel/category state manually.")
 				return
 			}
@@ -83,16 +85,34 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 
 		warning := ""
 		if err := s.GuildRoleDelete(i.GuildID, st.RoleID); err != nil {
-			log.Printf("Failed to delete role %s for study %q: %v", st.RoleID, name, err)
+			log.Printf("Failed to delete role %s for study %q: %v", st.RoleID, st.Name, err)
 			warning = "\nWarning: Role deletion failed. Please remove it manually if needed."
 		}
 
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", name, targetCategoryName, warning),
+				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, targetCategoryName, warning),
 			},
 		})
+	}
+}
+
+func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		ctx := context.Background()
+		data := i.ApplicationCommandData()
+
+		studies, err := studyRepo.FindAllActive(ctx)
+		if err != nil {
+			log.Printf("Failed to load active studies for autocomplete: %v", err)
+			respondArchiveAutocomplete(s, i, nil)
+			return
+		}
+
+		query := focusedStringOptionValue(data.Options, "channel")
+		choices := buildArchiveStudyAutocompleteChoices(studies, query, archiveAutocompleteMaxChoices)
+		respondArchiveAutocomplete(s, i, choices)
 	}
 }
 
@@ -272,6 +292,51 @@ func buildArchiveAllDryRunSummary(studyNames []string, plan archiveDryRunPlan) s
 	}
 
 	return truncateForDiscord(b.String(), discordMessageLimit)
+}
+
+func focusedStringOptionValue(options []*discordgo.ApplicationCommandInteractionDataOption, optionName string) string {
+	for _, opt := range options {
+		if opt.Name == optionName && opt.Focused {
+			return opt.StringValue()
+		}
+	}
+	return ""
+}
+
+func buildArchiveStudyAutocompleteChoices(studies []study.Study, query string, limit int) []*discordgo.ApplicationCommandOptionChoice {
+	if limit <= 0 {
+		return nil
+	}
+
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, min(limit, len(studies)))
+	for _, st := range studies {
+		if normalizedQuery != "" {
+			target := strings.ToLower(st.Name + " " + st.ChannelID)
+			if !strings.Contains(target, normalizedQuery) {
+				continue
+			}
+		}
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  fmt.Sprintf("%s (<#%s>)", st.Name, st.ChannelID),
+			Value: st.ChannelID,
+		})
+		if len(choices) >= limit {
+			break
+		}
+	}
+	return choices
+}
+
+func respondArchiveAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) {
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	}); err != nil {
+		log.Printf("Failed to respond archive-study autocomplete: %v", err)
+	}
 }
 
 func truncateForDiscord(message string, maxLength int) string {

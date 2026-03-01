@@ -62,6 +62,18 @@ func (r *StudyRepository) FindByName(ctx context.Context, name string) (study.St
 	return s, nil
 }
 
+func (r *StudyRepository) FindByChannelID(ctx context.Context, channelID string) (study.Study, error) {
+	var s study.Study
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, description, channel_id, role_id, created_at, status
+		 FROM studies WHERE channel_id = $1`, channelID,
+	).Scan(&s.ID, &s.Name, &s.Description, &s.ChannelID, &s.RoleID, &s.CreatedAt, &s.Status)
+	if err != nil {
+		return study.Study{}, fmt.Errorf("find study by channel id: %w", err)
+	}
+	return s, nil
+}
+
 func (r *StudyRepository) Archive(ctx context.Context, name string) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE studies SET status = 'archived' WHERE name = $1 AND status = 'active'`, name)

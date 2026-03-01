@@ -75,10 +75,11 @@ var commands = []*discordgo.ApplicationCommand{
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 		Options: []*discordgo.ApplicationCommandOption{
 			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "name",
-				Description: "Name of the study to archive",
-				Required:    true,
+				Type:         discordgo.ApplicationCommandOptionString,
+				Name:         "channel",
+				Description:  "Study channel to archive (autocomplete)",
+				Required:     true,
+				Autocomplete: true,
 			},
 		},
 	},

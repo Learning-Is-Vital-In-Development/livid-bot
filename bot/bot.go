@@ -34,17 +34,29 @@ func Run(cfg Config) {
 	}
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"hello":        handleHello,
-		"submit":       handleSubmit,
-		"create-study": newCreateStudyHandler(cfg.StudyRepo),
+		"hello":         handleHello,
+		"submit":        handleSubmit,
+		"create-study":  newCreateStudyHandler(cfg.StudyRepo),
 		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
 		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 	}
+	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
+	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
-			h(s, i)
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			commandName := i.ApplicationCommandData().Name
+			if h, ok := commandHandlers[commandName]; ok {
+				h(s, i)
+			}
+		case discordgo.InteractionApplicationCommandAutocomplete:
+			commandName := i.ApplicationCommandData().Name
+			if h, ok := autocompleteHandlers[commandName]; ok {
+				h(s, i)
+			}
 		}
 	})
 
