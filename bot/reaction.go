@@ -66,6 +66,28 @@ func (h *ReactionHandler) Track(messageID string, emojiMap map[string]emojiStudy
 	h.mappings = newMappings
 }
 
+// Untrack removes message mappings for the given IDs (copy-on-write).
+func (h *ReactionHandler) Untrack(messageIDs []string) {
+	if len(messageIDs) == 0 {
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	newMappings := make(map[string]map[string]emojiStudyInfo, len(h.mappings))
+	removeSet := make(map[string]struct{}, len(messageIDs))
+	for _, id := range messageIDs {
+		removeSet[id] = struct{}{}
+	}
+	for k, v := range h.mappings {
+		if _, skip := removeSet[k]; !skip {
+			newMappings[k] = v
+		}
+	}
+	h.mappings = newMappings
+}
+
 func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
 	// Ignore bot's own reactions
 	if r.UserID == s.State.User.ID {

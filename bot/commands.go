@@ -139,6 +139,20 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
+		Name:                     "study-start",
+		Description:              "Close recruitment and start studies for a branch",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:         discordgo.ApplicationCommandOptionString,
+				Name:         "branch",
+				Description:  "Target branch (YY-Q)",
+				Required:     true,
+				Autocomplete: true,
+			},
+		},
+	},
+	{
 		Name:                     "archive-all",
 		Description:              "Archive all active studies",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
