@@ -76,7 +76,11 @@ func Run(cfg Config) error {
 	if err := discord.Open(); err != nil {
 		return fmt.Errorf("open discord session: %w", err)
 	}
-	defer discord.Close()
+	defer func() {
+		if err := discord.Close(); err != nil {
+			log.Printf("Warning: failed to close discord session: %v", err)
+		}
+	}()
 
 	for _, command := range commands {
 		if _, err := discord.ApplicationCommandCreate(cfg.ApplicationID, cfg.GuildID, command); err != nil {

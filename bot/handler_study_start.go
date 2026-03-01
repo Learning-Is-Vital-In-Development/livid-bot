@@ -6,9 +6,10 @@ import (
 	"log"
 	"strings"
 
-	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
 	"livid-bot/study"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 const minMembersToStart = 3
@@ -94,7 +95,7 @@ func newStudyStartHandler(
 				archived = append(archived, archiveEntry)
 			} else {
 				if _, msgErr := s.ChannelMessageSend(info.ChannelID,
-					fmt.Sprintf("<@&%s> 모집이 마감되었습니다! 스터디를 시작해주세요.", info.RoleID),
+					fmt.Sprintf("<@&%s> 스터디에 오신 것을 환영합니다! 스터디를 진행해주세요.", info.RoleID),
 				); msgErr != nil {
 					log.Printf("Failed to send start notice to channel %s: %v", info.ChannelID, msgErr)
 				}

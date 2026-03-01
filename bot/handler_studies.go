@@ -70,14 +70,14 @@ func buildStudiesResponse(branch, status string, studies []study.Study) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Studies (status=%s", status))
+	fmt.Fprintf(&b, "Studies (status=%s", status)
 	if branch != "" {
-		b.WriteString(fmt.Sprintf(", branch=%s", branch))
+		fmt.Fprintf(&b, ", branch=%s", branch)
 	}
 	b.WriteString("):\n")
 
 	for _, st := range studies {
-		b.WriteString(fmt.Sprintf("- [%s] %s (%s) <#%s>\n", st.Branch, st.Name, st.Status, st.ChannelID))
+		fmt.Fprintf(&b, "- [%s] %s (%s) <#%s>\n", st.Branch, st.Name, st.Status, st.ChannelID)
 	}
 
 	return truncateForDiscord(strings.TrimSuffix(b.String(), "\n"), discordMessageLimit)
