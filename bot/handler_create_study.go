@@ -34,6 +34,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 		if opt, ok := optionMap["description"]; ok {
 			description = opt.StringValue()
 		}
+		logCommand(i, "start", "create-study requested branch=%s name=%s", branch, name)
 
 		guildID := i.GuildID
 
@@ -52,7 +53,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 			ParentID: categoryID,
 		})
 		if err != nil {
-			log.Printf("Failed to create channel: %v", err)
+			logCommand(i, "error", "failed to create channel name=%s err=%v", channelName, err)
 			respondError(s, i, "Failed to create channel.")
 			return
 		}
@@ -63,10 +64,10 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 			Mentionable: boolPtr(true),
 		})
 		if err != nil {
-			log.Printf("Failed to create role: %v", err)
+			logCommand(i, "error", "failed to create role name=%s err=%v", name, err)
 			// Compensate: delete the channel we just created
 			if _, delErr := s.ChannelDelete(channel.ID); delErr != nil {
-				log.Printf("Failed to clean up channel %s: %v", channel.ID, delErr)
+				logCommand(i, "error", "failed to cleanup channel=%s err=%v", channel.ID, delErr)
 			}
 			respondError(s, i, "Failed to create role.")
 			return
@@ -76,25 +77,29 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 		ctx := context.Background()
 		_, err = studyRepo.Create(ctx, branch, name, description, channel.ID, role.ID)
 		if err != nil {
-			log.Printf("Failed to save study to DB: %v", err)
+			logCommand(i, "error", "failed to save study branch=%s name=%s err=%v", branch, name, err)
 			// Compensate: delete channel and role
 			if _, delErr := s.ChannelDelete(channel.ID); delErr != nil {
-				log.Printf("Failed to clean up channel %s: %v", channel.ID, delErr)
+				logCommand(i, "error", "failed to cleanup channel=%s err=%v", channel.ID, delErr)
 			}
 			if delErr := s.GuildRoleDelete(guildID, role.ID); delErr != nil {
-				log.Printf("Failed to clean up role %s: %v", role.ID, delErr)
+				logCommand(i, "error", "failed to cleanup role=%s err=%v", role.ID, delErr)
 			}
 			respondError(s, i, "Failed to save study. Duplicate name in same branch?")
 			return
 		}
 
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf("Study **%s** created in branch **%s**!\nChannel: <#%s>\nRole: <@&%s>",
 					name, branch, channel.ID, role.ID),
 			},
-		})
+		}); err != nil {
+			logCommand(i, "error", "failed to respond create-study success: %v", err)
+			return
+		}
+		logCommand(i, "success", "created study branch=%s name=%s channel=%s role=%s", branch, name, channel.ID, role.ID)
 	}
 }
 
