@@ -6,20 +6,30 @@ import (
 	"os/signal"
 
 	"github.com/bwmarrin/discordgo"
+	"livid-bot/db"
 )
 
-var BotToken string
-var ApplicationID string
-var GuildID string
-
-var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-	"hello":  handleHello,
-	"submit": handleSubmit,
+type Config struct {
+	BotToken      string
+	ApplicationID string
+	GuildID       string
+	StudyRepo     *db.StudyRepository
+	MemberRepo    *db.MemberRepository
+	RecruitRepo   *db.RecruitRepository
 }
 
-func Run() {
-	discord, err := discordgo.New("Bot " + BotToken)
+func Run(cfg Config) {
+	discord, err := discordgo.New("Bot " + cfg.BotToken)
 	checkNilErr(err)
+
+	discord.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsGuildMessageReactions
+
+	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"hello":  handleHello,
+		"submit": handleSubmit,
+	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
@@ -29,7 +39,7 @@ func Run() {
 
 	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
 	for i, command := range commands {
-		cmd, err := discord.ApplicationCommandCreate(ApplicationID, GuildID, command)
+		cmd, err := discord.ApplicationCommandCreate(cfg.ApplicationID, cfg.GuildID, command)
 		checkNilErr(err)
 		registeredCommands[i] = cmd
 	}
