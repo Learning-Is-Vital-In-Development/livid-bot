@@ -120,6 +120,16 @@ func ensureCategoryID(s *discordgo.Session, guildID, categoryName string) (strin
 		Type: discordgo.ChannelTypeGuildCategory,
 	})
 	if err != nil {
+		// Re-fetch in case another goroutine created it concurrently
+		channels, refetchErr := s.GuildChannels(guildID)
+		if refetchErr != nil {
+			return "", err
+		}
+		for _, ch := range channels {
+			if ch.Type == discordgo.ChannelTypeGuildCategory && strings.EqualFold(ch.Name, categoryName) {
+				return ch.ID, nil
+			}
+		}
 		return "", err
 	}
 

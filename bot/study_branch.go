@@ -21,5 +21,23 @@ func normalizeStudyName(name string) string {
 }
 
 func buildStudyChannelName(branch, name string) string {
-	return branch + "-" + name
+	return sanitizeChannelName(branch + "-" + name)
+}
+
+func sanitizeChannelName(name string) string {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, " ", "-")
+
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+
+	result := b.String()
+	if len(result) > 100 {
+		result = result[:100]
+	}
+	return result
 }
