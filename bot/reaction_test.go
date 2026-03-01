@@ -25,6 +25,47 @@ func TestReactionHandlerTrackAndLookup(t *testing.T) {
 	}
 }
 
+func TestReactionHandlerUntrack(t *testing.T) {
+	h := NewReactionHandler(nil)
+
+	h.Track("msg-1", map[string]emojiStudyInfo{
+		"1️⃣": {RoleID: "role-1", StudyID: 101},
+	})
+	h.Track("msg-2", map[string]emojiStudyInfo{
+		"2️⃣": {RoleID: "role-2", StudyID: 202},
+	})
+	h.Track("msg-3", map[string]emojiStudyInfo{
+		"3️⃣": {RoleID: "role-3", StudyID: 303},
+	})
+
+	h.Untrack([]string{"msg-1", "msg-3"})
+
+	if _, ok := h.lookup("msg-1", "1️⃣"); ok {
+		t.Fatal("expected msg-1 to be untracked")
+	}
+	if _, ok := h.lookup("msg-3", "3️⃣"); ok {
+		t.Fatal("expected msg-3 to be untracked")
+	}
+	if _, ok := h.lookup("msg-2", "2️⃣"); !ok {
+		t.Fatal("expected msg-2 to still be tracked")
+	}
+}
+
+func TestReactionHandlerUntrackEmpty(t *testing.T) {
+	h := NewReactionHandler(nil)
+
+	h.Track("msg-1", map[string]emojiStudyInfo{
+		"1️⃣": {RoleID: "role-1", StudyID: 101},
+	})
+
+	h.Untrack(nil)
+	h.Untrack([]string{})
+
+	if _, ok := h.lookup("msg-1", "1️⃣"); !ok {
+		t.Fatal("expected msg-1 to remain after empty untrack")
+	}
+}
+
 func TestReactionHandlerTrackReplacesMessageMapping(t *testing.T) {
 	h := NewReactionHandler(nil)
 

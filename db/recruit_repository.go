@@ -61,7 +61,7 @@ func (r *RecruitRepository) LoadAllMappings(ctx context.Context) ([]EmojiRoleMap
 		 FROM recruit_message_mappings rmm
 		 JOIN recruit_messages rm ON rm.id = rmm.recruit_message_id
 		 JOIN studies s ON s.id = rmm.study_id
-		 WHERE s.status = 'active'`)
+		 WHERE s.status = 'active' AND rm.closed_at IS NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("load mappings: %w", err)
 	}
@@ -76,4 +76,63 @@ func (r *RecruitRepository) LoadAllMappings(ctx context.Context) ([]EmojiRoleMap
 		mappings = append(mappings, m)
 	}
 	return mappings, rows.Err()
+}
+
+type RecruitStudyInfo struct {
+	StudyID   int64
+	StudyName string
+	ChannelID string
+	RoleID    string
+}
+
+func (r *RecruitRepository) FindOpenMappingsByBranch(ctx context.Context, branch string) ([]string, []RecruitStudyInfo, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT rm.message_id, s.id, s.name, s.channel_id, s.role_id
+		 FROM recruit_messages rm
+		 JOIN recruit_message_mappings rmm ON rm.id = rmm.recruit_message_id
+		 JOIN studies s ON s.id = rmm.study_id
+		 WHERE s.branch = $1 AND s.status = 'active' AND rm.closed_at IS NULL
+		 ORDER BY s.id`, branch)
+	if err != nil {
+		return nil, nil, fmt.Errorf("find open mappings by branch: %w", err)
+	}
+	defer rows.Close()
+
+	messageIDSet := make(map[string]struct{})
+	var messageIDs []string
+	studyIDSet := make(map[int64]struct{})
+	var studies []RecruitStudyInfo
+
+	for rows.Next() {
+		var msgID string
+		var info RecruitStudyInfo
+		if err := rows.Scan(&msgID, &info.StudyID, &info.StudyName, &info.ChannelID, &info.RoleID); err != nil {
+			return nil, nil, fmt.Errorf("scan open mapping: %w", err)
+		}
+		if _, exists := messageIDSet[msgID]; !exists {
+			messageIDSet[msgID] = struct{}{}
+			messageIDs = append(messageIDs, msgID)
+		}
+		if _, exists := studyIDSet[info.StudyID]; !exists {
+			studyIDSet[info.StudyID] = struct{}{}
+			studies = append(studies, info)
+		}
+	}
+	return messageIDs, studies, rows.Err()
+}
+
+func (r *RecruitRepository) CloseByBranch(ctx context.Context, branch string) (int64, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE recruit_messages SET closed_at = NOW()
+		 WHERE closed_at IS NULL AND id IN (
+		   SELECT DISTINCT rm.id
+		   FROM recruit_messages rm
+		   JOIN recruit_message_mappings rmm ON rm.id = rmm.recruit_message_id
+		   JOIN studies s ON s.id = rmm.study_id
+		   WHERE s.branch = $1 AND s.status = 'active'
+		 )`, branch)
+	if err != nil {
+		return 0, fmt.Errorf("close recruit messages by branch: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }

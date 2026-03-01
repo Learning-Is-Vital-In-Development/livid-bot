@@ -22,6 +22,53 @@ type archiveFailure struct {
 	reason    string
 }
 
+type archiveResult struct {
+	CategoryName string
+	Warning      string
+}
+
+func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID string, st study.Study) (archiveResult, error) {
+	ctx := context.Background()
+
+	channel, err := s.Channel(st.ChannelID)
+	if err != nil {
+		return archiveResult{}, fmt.Errorf("load channel %s for study %q: %w", st.ChannelID, st.Name, err)
+	}
+	originalParentID := channel.ParentID
+
+	allocator, err := newArchiveCategoryAllocator(s, guildID)
+	if err != nil {
+		return archiveResult{}, fmt.Errorf("prepare archive category allocator: %w", err)
+	}
+
+	targetCategoryID, targetCategoryName, reservation, err := allocator.Reserve()
+	if err != nil {
+		return archiveResult{}, fmt.Errorf("reserve archive category: %w", err)
+	}
+
+	if _, err := s.ChannelEdit(st.ChannelID, &discordgo.ChannelEdit{ParentID: targetCategoryID}); err != nil {
+		return archiveResult{}, fmt.Errorf("move channel %s to %s: %w", st.ChannelID, targetCategoryName, err)
+	}
+	reservation.Commit()
+
+	if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
+		if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
+			log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
+			return archiveResult{}, fmt.Errorf("archive study %q in DB (rollback also failed): %w", st.Name, err)
+		}
+		reservation.Release()
+		return archiveResult{}, fmt.Errorf("archive study %q in DB (channel rolled back): %w", st.Name, err)
+	}
+
+	warning := ""
+	if err := s.GuildRoleDelete(guildID, st.RoleID); err != nil {
+		log.Printf("Failed to delete role %s for study %q: %v", st.RoleID, st.Name, err)
+		warning = "role deletion failed"
+	}
+
+	return archiveResult{CategoryName: targetCategoryName, Warning: warning}, nil
+}
+
 func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options := i.ApplicationCommandData().Options
@@ -46,63 +93,28 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 			return
 		}
 
-		channel, err := s.Channel(st.ChannelID)
+		result, err := archiveStudy(s, studyRepo, i.GuildID, st)
 		if err != nil {
-			log.Printf("Failed to load channel %s for study %q: %v", st.ChannelID, st.Name, err)
-			respondError(s, i, "Failed to load study channel. Archive aborted.")
-			return
-		}
-		originalParentID := channel.ParentID
-
-		allocator, err := newArchiveCategoryAllocator(s, i.GuildID)
-		if err != nil {
-			log.Printf("Failed to prepare archive category allocator: %v", err)
-			respondError(s, i, "Failed to prepare archive category.")
-			return
-		}
-
-		targetCategoryID, targetCategoryName, reservation, err := allocator.Reserve()
-		if err != nil {
-			log.Printf("Failed to reserve archive category: %v", err)
-			respondError(s, i, "Failed to prepare archive category.")
-			return
-		}
-
-		if _, err := s.ChannelEdit(st.ChannelID, &discordgo.ChannelEdit{ParentID: targetCategoryID}); err != nil {
-			log.Printf("Failed to move channel %s for study %q to %s: %v", st.ChannelID, st.Name, targetCategoryName, err)
-			respondError(s, i, "Failed to move study channel to archive category.")
-			return
-		}
-		reservation.Commit()
-
-		if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
-			log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
-			if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
-				log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
-				respondError(s, i, "Failed to archive study and rollback failed. Please check channel/category state manually.")
-				return
-			}
-			reservation.Release()
-			respondError(s, i, "Failed to archive study. Channel move was rolled back.")
+			log.Printf("Failed to archive study %q: %v", st.Name, err)
+			respondError(s, i, fmt.Sprintf("Failed to archive study: %v", err))
 			return
 		}
 
 		warning := ""
-		if err := s.GuildRoleDelete(i.GuildID, st.RoleID); err != nil {
-			log.Printf("Failed to delete role %s for study %q: %v", st.RoleID, st.Name, err)
-			warning = "\nWarning: Role deletion failed. Please remove it manually if needed."
+		if result.Warning != "" {
+			warning = fmt.Sprintf("\nWarning: %s. Please remove it manually if needed.", result.Warning)
 		}
 
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, targetCategoryName, warning),
+				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, result.CategoryName, warning),
 			},
 		}); err != nil {
 			logCommand(i, "error", "failed to respond archive-study success: %v", err)
 			return
 		}
-		logCommand(i, "success", "archived study id=%d name=%s channel=%s category=%s", st.ID, st.Name, st.ChannelID, targetCategoryName)
+		logCommand(i, "success", "archived study id=%d name=%s channel=%s category=%s", st.ID, st.Name, st.ChannelID, result.CategoryName)
 	}
 }
 
@@ -152,14 +164,13 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 			return
 		}
 
-		allocator, err := newArchiveCategoryAllocator(s, i.GuildID)
-		if err != nil {
-			log.Printf("Failed to prepare archive category allocator: %v", err)
-			respondError(s, i, "Failed to prepare archive category.")
-			return
-		}
-
 		if dryRun {
+			allocator, err := newArchiveCategoryAllocator(s, i.GuildID)
+			if err != nil {
+				log.Printf("Failed to prepare archive category allocator: %v", err)
+				respondError(s, i, "Failed to prepare archive category.")
+				return
+			}
 			studyNames := make([]string, len(studies))
 			for idx, st := range studies {
 				studyNames[idx] = st.Name
@@ -184,43 +195,15 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 		warnings := make([]string, 0)
 
 		for _, st := range studies {
-			channel, err := s.Channel(st.ChannelID)
+			result, err := archiveStudy(s, studyRepo, i.GuildID, st)
 			if err != nil {
-				log.Printf("Failed to load channel %s for study %q: %v", st.ChannelID, st.Name, err)
-				failures = append(failures, archiveFailure{studyName: st.Name, reason: "channel lookup failed"})
-				continue
-			}
-			originalParentID := channel.ParentID
-
-			targetCategoryID, targetCategoryName, reservation, err := allocator.Reserve()
-			if err != nil {
-				log.Printf("Failed to reserve archive category for study %q: %v", st.Name, err)
-				failures = append(failures, archiveFailure{studyName: st.Name, reason: "archive category unavailable"})
+				log.Printf("Failed to archive study %q: %v", st.Name, err)
+				failures = append(failures, archiveFailure{studyName: st.Name, reason: err.Error()})
 				continue
 			}
 
-			if _, err := s.ChannelEdit(st.ChannelID, &discordgo.ChannelEdit{ParentID: targetCategoryID}); err != nil {
-				log.Printf("Failed to move channel %s for study %q to %s: %v", st.ChannelID, st.Name, targetCategoryName, err)
-				failures = append(failures, archiveFailure{studyName: st.Name, reason: "channel move failed"})
-				continue
-			}
-			reservation.Commit()
-
-			if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
-				log.Printf("Failed to archive study %q in DB after move: %v", st.Name, err)
-				if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
-					log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
-					warnings = append(warnings, fmt.Sprintf("%s: rollback failed", st.Name))
-				} else {
-					reservation.Release()
-				}
-				failures = append(failures, archiveFailure{studyName: st.Name, reason: "db archive failed"})
-				continue
-			}
-
-			if err := s.GuildRoleDelete(i.GuildID, st.RoleID); err != nil {
-				log.Printf("Failed to delete role %s for study %q: %v", st.RoleID, st.Name, err)
-				warnings = append(warnings, fmt.Sprintf("%s: role deletion failed", st.Name))
+			if result.Warning != "" {
+				warnings = append(warnings, fmt.Sprintf("%s: %s", st.Name, result.Warning))
 			}
 
 			successCount++

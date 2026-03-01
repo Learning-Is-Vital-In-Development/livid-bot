@@ -44,11 +44,13 @@ func Run(cfg Config) error {
 		"studies":       newStudiesHandler(cfg.StudyRepo),
 		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
+		"study-start":   newStudyStartHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
 		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
 		"recruit":       newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
+		"study-start":   newStudyStartAutocompleteHandler(cfg.StudyRepo),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
