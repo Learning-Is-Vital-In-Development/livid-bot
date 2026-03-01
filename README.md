@@ -41,16 +41,18 @@ docker compose up --build
 
 ## 슬래시 명령어
 
-### `/hello`
-- 간단한 응답 확인용 명령어
+### `/help`
+- 호출자 권한 기준으로 사용 가능한 명령어를 안내
+- 응답은 ephemeral(호출자에게만 표시)
 
-### `/submit`
+### `/members`
 - 옵션
-  - `screenshot` (attachment, required)
-  - `link` (string, required)
-- 문제 링크를 마크다운으로 변환해 임베드 메시지로 게시
+  - `channel` (string, required, autocomplete)
+- 동작
+  - 선택한 스터디의 active 멤버 목록을 표시 (ephemeral)
 
 ### `/create-study`
+- 관리자 전용
 - 옵션
   - `branch` (string, required) 예: `26-2`
   - `name` (string, required)
@@ -62,6 +64,7 @@ docker compose up --build
 - branch 형식 검증: `YY-Q` (`Q`는 `1~4`)
 
 ### `/recruit`
+- 관리자 전용
 - 옵션
   - `channel` (channel, required)
   - `branch` (string, required, autocomplete)
@@ -71,14 +74,31 @@ docker compose up --build
   - 선택한 branch의 active 스터디만 모집
   - 모집 메시지에 branch 정보 표시
 
+### `/studies`
+- 관리자 전용
+- 옵션
+  - `branch` (string, optional)
+  - `status` (string, optional: `active` | `archived`)
+- 동작
+  - 조건에 맞는 스터디 목록을 표시 (ephemeral)
+
 ### `/archive-study`
+- 관리자 전용
 - 옵션
   - `channel` (string, required, autocomplete)
 - 동작
   - 선택한 스터디 채널을 `archiveN` 카테고리로 이동
   - DB 상태를 archived로 변경, 역할 삭제 시도
 
+### `/study-start`
+- 관리자 전용
+- 옵션
+  - `branch` (string, required, autocomplete)
+- 동작
+  - 분기의 모집을 마감하고 멤버 수 기준으로 스터디 시작/아카이브 처리 (ephemeral)
+
 ### `/archive-all`
+- 관리자 전용
 - 옵션
   - `dry-run` (boolean, optional)
 - 동작
