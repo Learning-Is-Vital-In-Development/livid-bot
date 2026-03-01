@@ -5,7 +5,16 @@ import "github.com/bwmarrin/discordgo"
 var commands = []*discordgo.ApplicationCommand{
 	{
 		Name:        "help",
-		Description: "Show available commands",
+		Description: "사용 가능한 명령어 안내",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:         discordgo.ApplicationCommandOptionString,
+				Name:         "command",
+				Description:  "상세 도움말을 볼 명령어 (자동완성)",
+				Required:     false,
+				Autocomplete: true,
+			},
+		},
 	},
 	{
 		Name:                     "create-study",

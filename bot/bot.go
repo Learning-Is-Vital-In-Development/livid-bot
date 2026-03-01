@@ -49,6 +49,7 @@ func Run(cfg Config) error {
 		"study-start":   newStudyStartHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"help":          handleHelpAutocomplete,
 		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
 		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
 		"recruit":       newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
