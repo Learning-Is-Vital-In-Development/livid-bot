@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: livid
+      POSTGRES_PASSWORD: livid
+      POSTGRES_DB: livid
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  bot:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      DATABASE_URL: postgres://livid:livid@db:5432/livid?sslmode=disable
+
+volumes:
+  pgdata:
