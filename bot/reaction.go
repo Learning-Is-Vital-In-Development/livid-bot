@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -49,7 +49,7 @@ func (h *ReactionHandler) LoadFromDB(recruitRepo *db.RecruitRepository) error {
 	h.mappings = newMap
 	h.mu.Unlock()
 
-	log.Printf("Loaded %d reaction mappings from DB", len(dbMappings))
+	slog.Info("loaded reaction mappings from DB", "count", len(dbMappings))
 	return nil
 }
 
@@ -100,14 +100,14 @@ func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.Messa
 	}
 
 	if err := s.GuildMemberRoleAdd(r.GuildID, r.UserID, info.RoleID); err != nil {
-		log.Printf("Failed to add role %s to user %s: %v", info.RoleID, r.UserID, err)
+		slog.Error("failed to add role to user", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "error", err)
 		return
 	}
 
 	// Get username for DB record
 	member, err := s.GuildMember(r.GuildID, r.UserID)
 	if err != nil {
-		log.Printf("Failed to get member info for %s: %v", r.UserID, err)
+		slog.Error("failed to get member info", "guild_id", r.GuildID, "user_id", r.UserID, "error", err)
 		return
 	}
 
@@ -118,10 +118,10 @@ func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.Messa
 
 	ctx := context.Background()
 	if err := h.memberRepo.AddMember(ctx, info.StudyID, r.UserID, username); err != nil {
-		log.Printf("Failed to record member join: %v", err)
+		slog.Error("failed to record member join", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
 	}
 
-	log.Printf("User %s (%s) joined study %d", username, r.UserID, info.StudyID)
+	slog.Info("user joined study", "username", username, "user_id", r.UserID, "study_id", info.StudyID)
 }
 
 func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.MessageReactionRemove) {
@@ -135,16 +135,16 @@ func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.Me
 	}
 
 	if err := s.GuildMemberRoleRemove(r.GuildID, r.UserID, info.RoleID); err != nil {
-		log.Printf("Failed to remove role %s from user %s: %v", info.RoleID, r.UserID, err)
+		slog.Error("failed to remove role from user", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "error", err)
 		return
 	}
 
 	ctx := context.Background()
 	if err := h.memberRepo.RemoveMember(ctx, info.StudyID, r.UserID); err != nil {
-		log.Printf("Failed to record member leave: %v", err)
+		slog.Error("failed to record member leave", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
 	}
 
-	log.Printf("User %s left study %d", r.UserID, info.StudyID)
+	slog.Info("user left study", "user_id", r.UserID, "study_id", info.StudyID)
 }
 
 func (h *ReactionHandler) lookup(messageID, emoji string) (emojiStudyInfo, bool) {

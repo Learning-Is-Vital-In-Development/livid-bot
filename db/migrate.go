@@ -4,7 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -38,7 +38,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("check migration %s: %w", entry.Name(), err)
 		}
 		if count > 0 {
-			log.Printf("Skipping migration (already applied): %s", entry.Name())
+			slog.Info("skipping migration because already applied", "filename", entry.Name())
 			continue
 		}
 
@@ -47,7 +47,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("read migration %s: %w", entry.Name(), err)
 		}
 
-		log.Printf("Running migration: %s", entry.Name())
+		slog.Info("running migration", "filename", entry.Name())
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin transaction for migration %s: %w", entry.Name(), err)
