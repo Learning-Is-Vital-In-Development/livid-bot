@@ -23,7 +23,7 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// attachment
 	attachmentID := optionMap["screenshot"].Value.(string)
-	attachmentUrl := i.ApplicationCommandData().Resolved.Attachments[attachmentID].URL
+	attachmentURL := i.ApplicationCommandData().Resolved.Attachments[attachmentID].URL
 
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -38,9 +38,9 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 							Value: markdown,
 						},
 					},
-					Image: &discordgo.MessageEmbedImage{
-						URL: attachmentUrl,
-					},
+						Image: &discordgo.MessageEmbedImage{
+							URL: attachmentURL,
+						},
 					Author: interactionAuthor(i),
 					Color:  0x9400D3,
 				},
