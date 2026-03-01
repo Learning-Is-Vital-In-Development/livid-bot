@@ -70,6 +70,32 @@ func (r *StudyRepository) FindAllActiveByBranch(ctx context.Context, branch stri
 	return studies, rows.Err()
 }
 
+func (r *StudyRepository) FindByFilters(ctx context.Context, branch, status string) ([]study.Study, error) {
+	if status == "" {
+		return nil, fmt.Errorf("find studies by filters: status is required")
+	}
+
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, branch, name, description, channel_id, role_id, created_at, status
+		 FROM studies
+		 WHERE status = $1 AND ($2 = '' OR branch = $2)
+		 ORDER BY id`, status, branch)
+	if err != nil {
+		return nil, fmt.Errorf("find studies by filters: %w", err)
+	}
+	defer rows.Close()
+
+	var studies []study.Study
+	for rows.Next() {
+		var s study.Study
+		if err := rows.Scan(&s.ID, &s.Branch, &s.Name, &s.Description, &s.ChannelID, &s.RoleID, &s.CreatedAt, &s.Status); err != nil {
+			return nil, fmt.Errorf("scan study: %w", err)
+		}
+		studies = append(studies, s)
+	}
+	return studies, rows.Err()
+}
+
 func (r *StudyRepository) FindDistinctActiveBranches(ctx context.Context) ([]string, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT DISTINCT branch

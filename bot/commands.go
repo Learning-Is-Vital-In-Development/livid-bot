@@ -97,6 +97,35 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
+		Name:                     "studies",
+		Description:              "List studies by branch/status",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "branch",
+				Description: "Branch filter (YY-Q)",
+				Required:    false,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "status",
+				Description: "Study status",
+				Required:    false,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{
+						Name:  "active",
+						Value: "active",
+					},
+					{
+						Name:  "archived",
+						Value: "archived",
+					},
+				},
+			},
+		},
+	},
+	{
 		Name:                     "archive-all",
 		Description:              "Archive all active studies",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
