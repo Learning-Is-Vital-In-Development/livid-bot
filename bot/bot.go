@@ -27,8 +27,9 @@ func Run(cfg Config) {
 		discordgo.IntentsGuildMessageReactions
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"hello":  handleHello,
-		"submit": handleSubmit,
+		"hello":        handleHello,
+		"submit":       handleSubmit,
+		"create-study": newCreateStudyHandler(cfg.StudyRepo),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
