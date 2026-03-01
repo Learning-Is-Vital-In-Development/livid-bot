@@ -116,12 +116,12 @@ func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(s *d
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
 			log.Printf("Failed to load active studies for autocomplete: %v", err)
-			respondArchiveAutocomplete(s, i, nil)
+			respondAutocomplete(s, i, nil)
 			return
 		}
 
 		choices := buildArchiveStudyAutocompleteChoices(studies, query, archiveAutocompleteMaxChoices)
-		respondArchiveAutocomplete(s, i, choices)
+		respondAutocomplete(s, i, choices)
 		logCommand(i, "success", "archive-study autocomplete choices=%d", len(choices))
 	}
 }
@@ -348,17 +348,6 @@ func buildArchiveStudyAutocompleteChoices(studies []study.Study, query string, l
 		}
 	}
 	return choices
-}
-
-func respondArchiveAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) {
-	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
-		Data: &discordgo.InteractionResponseData{
-			Choices: choices,
-		},
-	}); err != nil {
-		log.Printf("Failed to respond archive-study autocomplete: %v", err)
-	}
 }
 
 func buildArchiveAutocompleteChoiceName(studyName, channelID string) string {

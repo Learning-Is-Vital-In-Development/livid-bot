@@ -20,6 +20,17 @@ func respondError(s *discordgo.Session, i *discordgo.InteractionCreate, message 
 	}
 }
 
+func respondAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) {
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	}); err != nil {
+		logCommand(i, "error", "failed to respond autocomplete: %v", err)
+	}
+}
+
 func boolPtr(v bool) *bool {
 	return &v
 }

@@ -42,10 +42,12 @@ func Run(cfg Config) error {
 		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
 		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
 		"studies":       newStudiesHandler(cfg.StudyRepo),
+		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
+		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
 		"recruit":       newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
 	}
 

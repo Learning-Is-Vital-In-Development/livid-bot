@@ -126,6 +126,19 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
+		Name:        "members",
+		Description: "List active members of a study",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:         discordgo.ApplicationCommandOptionString,
+				Name:         "channel",
+				Description:  "Study channel (autocomplete)",
+				Required:     true,
+				Autocomplete: true,
+			},
+		},
+	},
+	{
 		Name:                     "archive-all",
 		Description:              "Archive all active studies",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
