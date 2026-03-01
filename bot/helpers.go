@@ -65,9 +65,11 @@ func logCommand(i *discordgo.InteractionCreate, stage, format string, args ...in
 
 	if stage == "error" {
 		slog.Error(message, attrs...)
+		recordCommandResult(i, stage, message)
 		return
 	}
 	slog.Info(message, attrs...)
+	recordCommandResult(i, stage, message)
 }
 
 func interactionCommandName(i *discordgo.InteractionCreate) string {
