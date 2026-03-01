@@ -36,5 +36,7 @@ func main() {
 		RecruitRepo:   db.NewRecruitRepository(pool),
 	}
 
-	bot.Run(cfg)
+	if err := bot.Run(cfg); err != nil {
+		log.Fatalf("Bot exited with error: %v", err)
+	}
 }

@@ -96,6 +96,11 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 
 		if err := recruitRepo.SaveRecruitMessage(ctx, msg.ID, channelID, mappings); err != nil {
 			logCommand(i, "error", "failed to save recruit message mapping message=%s err=%v", msg.ID, err)
+			if delErr := s.ChannelMessageDelete(channelID, msg.ID); delErr != nil {
+				logCommand(i, "error", "failed to delete recruit message after DB failure message=%s err=%v", msg.ID, delErr)
+			}
+			respondError(s, i, "Failed to save recruitment data. Message has been removed. Please try again.")
+			return
 		}
 
 		// Update in-memory mapping

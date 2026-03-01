@@ -103,6 +103,10 @@ func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.Messa
 }
 
 func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.MessageReactionRemove) {
+	if r.UserID == s.State.User.ID {
+		return
+	}
+
 	info, ok := h.lookup(r.MessageID, r.Emoji.Name)
 	if !ok {
 		return

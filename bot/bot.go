@@ -19,9 +19,11 @@ type Config struct {
 	RecruitRepo   *db.RecruitRepository
 }
 
-func Run(cfg Config) {
+func Run(cfg Config) error {
 	discord, err := discordgo.New("Bot " + cfg.BotToken)
-	checkNilErr(err)
+	if err != nil {
+		return fmt.Errorf("create discord session: %w", err)
+	}
 
 	discord.Identify.Intents = discordgo.IntentsGuilds |
 		discordgo.IntentsGuildMessages |
@@ -67,22 +69,21 @@ func Run(cfg Config) {
 	discord.AddHandler(reactionHandler.OnReactionAdd)
 	discord.AddHandler(reactionHandler.OnReactionRemove)
 
-	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
-	for i, command := range commands {
-		cmd, err := discord.ApplicationCommandCreate(cfg.ApplicationID, cfg.GuildID, command)
-		checkNilErr(err)
-		registeredCommands[i] = cmd
-	}
-
-	err = discord.Open()
-	if err != nil {
-		fmt.Println(err.Error())
-		return
+	if err := discord.Open(); err != nil {
+		return fmt.Errorf("open discord session: %w", err)
 	}
 	defer discord.Close()
 
-	fmt.Println("Bot running.... Press CTRL + C to exit")
+	for _, command := range commands {
+		if _, err := discord.ApplicationCommandCreate(cfg.ApplicationID, cfg.GuildID, command); err != nil {
+			return fmt.Errorf("register command %q: %w", command.Name, err)
+		}
+	}
+
+	log.Println("Bot running.... Press CTRL + C to exit")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
+
+	return nil
 }

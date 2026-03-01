@@ -51,11 +51,7 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 					Image: &discordgo.MessageEmbedImage{
 						URL: attachmentUrl,
 					},
-					Author: &discordgo.MessageEmbedAuthor{
-						Name:    i.Member.User.Username,
-						URL:     "https://discord.com/users/" + i.Member.User.ID,
-						IconURL: i.Member.User.AvatarURL(""),
-					},
+					Author: interactionAuthor(i),
 					Color: 0x9400D3,
 				},
 			},
