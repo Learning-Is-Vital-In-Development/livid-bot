@@ -37,6 +37,12 @@ type archiveCategoryAllocator struct {
 	readOnlyEnsured map[string]bool
 }
 
+type archiveCategoryReservation struct {
+	slot        *archiveCategorySlot
+	isCommitted bool
+	isReleased  bool
+}
+
 type archiveDryRunPlan struct {
 	Assignments       []string
 	CategoryUseCounts map[string]int
@@ -97,16 +103,15 @@ func (a *archiveCategoryAllocator) Plan(totalChannels int) archiveDryRunPlan {
 	return planArchiveCategoryAssignments(a.slots, totalChannels)
 }
 
-func (a *archiveCategoryAllocator) Reserve() (categoryID, categoryName string, err error) {
+func (a *archiveCategoryAllocator) Reserve() (categoryID, categoryName string, reservation *archiveCategoryReservation, err error) {
 	slot, err := a.getOrCreateWritableSlot()
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	if err := a.ensureReadOnly(slot); err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
-	slot.ChannelCount++
-	return slot.ID, slot.Name, nil
+	return slot.ID, slot.Name, &archiveCategoryReservation{slot: slot}, nil
 }
 
 func (a *archiveCategoryAllocator) getOrCreateWritableSlot() (*archiveCategorySlot, error) {
@@ -191,6 +196,24 @@ func mergeReadOnlyOverwrite(currentAllow, currentDeny int64) (newAllow, newDeny 
 	newAllow = currentAllow &^ archiveReadOnlyDenyMask
 	newDeny = currentDeny | archiveReadOnlyDenyMask
 	return newAllow, newDeny
+}
+
+func (r *archiveCategoryReservation) Commit() {
+	if r == nil || r.slot == nil || r.isCommitted {
+		return
+	}
+	r.slot.ChannelCount++
+	r.isCommitted = true
+}
+
+func (r *archiveCategoryReservation) Release() {
+	if r == nil || r.slot == nil || !r.isCommitted || r.isReleased {
+		return
+	}
+	if r.slot.ChannelCount > 0 {
+		r.slot.ChannelCount--
+	}
+	r.isReleased = true
 }
 
 func planArchiveCategoryAssignments(existingSlots []archiveCategorySlot, totalChannels int) archiveDryRunPlan {
