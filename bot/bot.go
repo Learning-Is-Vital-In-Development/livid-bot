@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 
@@ -26,10 +27,17 @@ func Run(cfg Config) {
 		discordgo.IntentsGuildMessages |
 		discordgo.IntentsGuildMessageReactions
 
+	// Initialize reaction handler and load existing mappings from DB
+	reactionHandler := NewReactionHandler(cfg.MemberRepo)
+	if err := reactionHandler.LoadFromDB(cfg.RecruitRepo); err != nil {
+		log.Printf("Warning: failed to load reaction mappings: %v", err)
+	}
+
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"hello":        handleHello,
 		"submit":       handleSubmit,
 		"create-study": newCreateStudyHandler(cfg.StudyRepo),
+		"recruit":      newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -37,6 +45,9 @@ func Run(cfg Config) {
 			h(s, i)
 		}
 	})
+
+	discord.AddHandler(reactionHandler.OnReactionAdd)
+	discord.AddHandler(reactionHandler.OnReactionRemove)
 
 	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
 	for i, command := range commands {

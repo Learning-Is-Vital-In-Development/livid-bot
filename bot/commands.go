@@ -44,4 +44,29 @@ var commands = []*discordgo.ApplicationCommand{
 			},
 		},
 	},
+	{
+		Name:                     "recruit",
+		Description:              "Post a recruitment message for active studies",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionChannel,
+				Name:        "channel",
+				Description: "Channel to post the recruitment message",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "from",
+				Description: "Recruitment start date (YYYY-MM-DD)",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "to",
+				Description: "Recruitment end date (YYYY-MM-DD)",
+				Required:    true,
+			},
+		},
+	},
 }
