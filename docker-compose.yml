@@ -1,6 +1,8 @@
 services:
   db:
     image: postgres:16-alpine
+    labels:
+      autoheal: "true"
     environment:
       POSTGRES_USER: livid
       POSTGRES_PASSWORD: livid
@@ -9,16 +11,32 @@ services:
       - "15432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U livid -d livid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   bot:
     build: .
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       DATABASE_URL: postgres://livid:livid@db:5432/livid?sslmode=disable
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    restart: always
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 10
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   pgdata:
