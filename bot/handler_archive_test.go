@@ -3,6 +3,9 @@ package bot
 import (
 	"strings"
 	"testing"
+
+	"github.com/bwmarrin/discordgo"
+	"livid-bot/study"
 )
 
 func TestBuildArchiveAllSummary(t *testing.T) {
@@ -58,5 +61,47 @@ func TestBuildArchiveAllDryRunSummary(t *testing.T) {
 	}
 	if !strings.Contains(summary, "1. study-a -> archive2") {
 		t.Fatalf("expected preview mapping in summary: %s", summary)
+	}
+}
+
+func TestFocusedStringOptionValue(t *testing.T) {
+	options := []*discordgo.ApplicationCommandInteractionDataOption{
+		{
+			Name:    "channel",
+			Type:    discordgo.ApplicationCommandOptionString,
+			Value:   "1234567890",
+			Focused: true,
+		},
+	}
+
+	got := focusedStringOptionValue(options, "channel")
+	if got != "1234567890" {
+		t.Fatalf("expected focused value, got %q", got)
+	}
+
+	missing := focusedStringOptionValue(options, "name")
+	if missing != "" {
+		t.Fatalf("expected empty value for missing option, got %q", missing)
+	}
+}
+
+func TestBuildArchiveStudyAutocompleteChoices(t *testing.T) {
+	studies := []study.Study{
+		{Name: "Algo", ChannelID: "111"},
+		{Name: "Backend", ChannelID: "222"},
+		{Name: "Frontend", ChannelID: "333"},
+	}
+
+	choices := buildArchiveStudyAutocompleteChoices(studies, "back", 25)
+	if len(choices) != 1 {
+		t.Fatalf("expected one filtered choice, got %d", len(choices))
+	}
+	if choices[0].Value != "222" {
+		t.Fatalf("expected channel id 222, got %v", choices[0].Value)
+	}
+
+	limited := buildArchiveStudyAutocompleteChoices(studies, "", 2)
+	if len(limited) != 2 {
+		t.Fatalf("expected limited choices count=2, got %d", len(limited))
 	}
 }
