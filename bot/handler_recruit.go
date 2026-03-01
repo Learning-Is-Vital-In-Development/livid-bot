@@ -130,7 +130,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 func buildRecruitMessage(branch string, studies []study.Study, from, to time.Time) string {
 	var b strings.Builder
 	b.WriteString("@everyone 스터디 모집이 시작되었습니다!\n")
-	b.WriteString(fmt.Sprintf("대상 분기: **%s**\n", branch))
+	fmt.Fprintf(&b, "대상 분기: **%s**\n", branch)
 	b.WriteString("참여를 원하시면 이모지로 참여 의사를 표현해주세요!\n\n")
 
 	for idx, st := range studies {
@@ -138,12 +138,12 @@ func buildRecruitMessage(branch string, studies []study.Study, from, to time.Tim
 		if st.Description != "" {
 			desc = fmt.Sprintf(" — %s", st.Description)
 		}
-		b.WriteString(fmt.Sprintf("%s **%s**%s\n", numberEmojis[idx], st.Name, desc))
+		fmt.Fprintf(&b, "%s **%s**%s\n", numberEmojis[idx], st.Name, desc)
 	}
 
-	b.WriteString(fmt.Sprintf("\n📅 모집 기간: %s ~ %s\n",
+	fmt.Fprintf(&b, "\n📅 모집 기간: %s ~ %s\n",
 		from.Format("2006-01-02"),
-		to.Format("2006-01-02")))
+		to.Format("2006-01-02"))
 	b.WriteString("\n이모지 반응으로 스터디 역할이 자동 부여됩니다.")
 
 	return b.String()

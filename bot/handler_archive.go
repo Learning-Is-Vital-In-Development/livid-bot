@@ -232,7 +232,7 @@ func rollbackChannelParent(s *discordgo.Session, channelID, parentID string) err
 
 func buildArchiveAllSummary(total, success int, failures []archiveFailure, warnings []string) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Archived **%d/%d** studies.", success, total))
+	fmt.Fprintf(&b, "Archived **%d/%d** studies.", success, total)
 
 	if len(failures) > 0 {
 		parts := make([]string, 0, len(failures))
@@ -253,7 +253,7 @@ func buildArchiveAllSummary(total, success int, failures []archiveFailure, warni
 
 func buildArchiveAllDryRunSummary(studyNames []string, plan archiveDryRunPlan) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Dry run: **%d** active studies would be archived. No changes were made.", len(studyNames)))
+	fmt.Fprintf(&b, "Dry run: **%d** active studies would be archived. No changes were made.", len(studyNames))
 
 	if len(plan.CategoryUseCounts) > 0 {
 		categoryNames := make([]string, 0, len(plan.CategoryUseCounts))
@@ -289,10 +289,10 @@ func buildArchiveAllDryRunSummary(studyNames []string, plan archiveDryRunPlan) s
 	if previewLimit > 0 && len(plan.Assignments) >= previewLimit {
 		b.WriteString("\nPreview:\n")
 		for idx := 0; idx < previewLimit; idx++ {
-			b.WriteString(fmt.Sprintf("%d. %s -> %s\n", idx+1, studyNames[idx], plan.Assignments[idx]))
+			fmt.Fprintf(&b, "%d. %s -> %s\n", idx+1, studyNames[idx], plan.Assignments[idx])
 		}
 		if len(studyNames) > previewLimit {
-			b.WriteString(fmt.Sprintf("...and %d more", len(studyNames)-previewLimit))
+			fmt.Fprintf(&b, "...and %d more", len(studyNames)-previewLimit)
 		}
 	}
 

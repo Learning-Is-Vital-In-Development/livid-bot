@@ -83,11 +83,11 @@ func buildMembersResponse(studyName string, members []study.StudyMember) string 
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("📚 **%s** members (%d)\n", studyName, len(members)))
+	fmt.Fprintf(&b, "📚 **%s** members (%d)\n", studyName, len(members))
 
 	for _, m := range members {
 		joinedDate := m.JoinedAt.Format("2006-01-02")
-		b.WriteString(fmt.Sprintf("- <@%s> (joined: %s)\n", m.UserID, joinedDate))
+		fmt.Fprintf(&b, "- <@%s> (joined: %s)\n", m.UserID, joinedDate)
 	}
 
 	return truncateForDiscord(strings.TrimSuffix(b.String(), "\n"), discordMessageLimit)
