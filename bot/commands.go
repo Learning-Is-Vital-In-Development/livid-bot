@@ -86,5 +86,13 @@ var commands = []*discordgo.ApplicationCommand{
 		Name:                     "archive-all",
 		Description:              "Archive all active studies",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionBoolean,
+				Name:        "dry-run",
+				Description: "Preview archive-all without moving channels or changing DB",
+				Required:    false,
+			},
+		},
 	},
 }
