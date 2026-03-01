@@ -36,6 +36,7 @@ func Run(cfg Config) error {
 	}
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"help":          handleHelp,
 		"create-study":  newCreateStudyHandler(cfg.StudyRepo),
 		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
 		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),

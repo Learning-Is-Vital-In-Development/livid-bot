@@ -4,6 +4,10 @@ import "github.com/bwmarrin/discordgo"
 
 var commands = []*discordgo.ApplicationCommand{
 	{
+		Name:        "help",
+		Description: "Show available commands",
+	},
+	{
 		Name:                     "create-study",
 		Description:              "Create a new study channel and role",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
