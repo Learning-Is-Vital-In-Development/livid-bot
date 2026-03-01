@@ -17,6 +17,8 @@ DISCORD_BOT_TOKEN=<YOUR_BOT_TOKEN>
 DISCORD_APPLICATION_ID=<YOUR_APPLICATION_ID>
 DISCORD_GUILD_ID=<YOUR_GUILD_ID>
 DATABASE_URL=postgres://livid:livid@localhost:15432/livid?sslmode=disable
+LOG_FORMAT=text   # text | json (default: text)
+LOG_LEVEL=info    # debug | info | warn | error (default: info)
 ```
 
 예시는 [.env.example](.env.example) 참고.
@@ -121,12 +123,16 @@ go test ./... -cover
 ```
 
 ## 로그
-커맨드 라이프사이클 로그를 출력합니다.
+`slog` 기반 구조화 로그를 출력합니다.
+
+- `LOG_FORMAT=text`(기본): 사람이 읽기 쉬운 key=value 형식
+- `LOG_FORMAT=json`: JSON 단일 라인 형식
+- `LOG_LEVEL`로 최소 출력 레벨 제어
 
 예시:
 ```text
-[cmd=create-study stage=start guild=... user=...] create-study requested branch=26-2 name=algo
-[cmd=create-study stage=success guild=... user=...] created study branch=26-2 name=algo channel=... role=...
+time=2026-03-02T10:00:00Z level=INFO msg="create-study requested branch=26-2 name=algo" cmd=create-study stage=start guild=... user=...
+time=2026-03-02T10:00:01Z level=INFO msg="created study branch=26-2 name=algo channel=... role=..." cmd=create-study stage=success guild=... user=...
 ```
 
 ## 참고

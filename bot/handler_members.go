@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -30,14 +30,14 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
-			log.Printf("Failed to find study by channel %q: %v", channelID, err)
+			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
 			respondError(s, i, "No study found for the selected channel.")
 			return
 		}
 
 		members, err := memberRepo.FindActiveByStudyID(ctx, st.ID)
 		if err != nil {
-			log.Printf("Failed to find members for study %q: %v", st.Name, err)
+			slog.Error("failed to find members for study", "study_id", st.ID, "study_name", st.Name, "error", err)
 			respondError(s, i, "Failed to load study members.")
 			return
 		}
@@ -66,7 +66,7 @@ func newMembersAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discor
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
-			log.Printf("Failed to load active studies for members autocomplete: %v", err)
+			slog.Error("failed to load active studies for members autocomplete", "error", err)
 			respondAutocomplete(s, i, nil)
 			return
 		}

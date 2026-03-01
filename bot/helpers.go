@@ -2,7 +2,7 @@ package bot
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -50,12 +50,24 @@ func logCommand(i *discordgo.InteractionCreate, stage, format string, args ...in
 		userID = interactionUserID(i)
 	}
 
-	prefix := fmt.Sprintf("[cmd=%s stage=%s guild=%s user=%s]", commandName, stage, guildID, userID)
+	message := "command event"
 	if format == "" {
-		log.Printf("%s", prefix)
+		format = message
+	}
+	message = fmt.Sprintf(format, args...)
+
+	attrs := []any{
+		"cmd", commandName,
+		"stage", stage,
+		"guild", guildID,
+		"user", userID,
+	}
+
+	if stage == "error" {
+		slog.Error(message, attrs...)
 		return
 	}
-	log.Printf("%s %s", prefix, fmt.Sprintf(format, args...))
+	slog.Info(message, attrs...)
 }
 
 func interactionCommandName(i *discordgo.InteractionCreate) string {

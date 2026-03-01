@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 
 	"livid-bot/bot"
 	"livid-bot/db"
+	"livid-bot/internal/logging"
 )
 
 func main() {
+	logging.Configure()
+
 	token := requireEnv("DISCORD_BOT_TOKEN")
 	appID := requireEnv("DISCORD_APPLICATION_ID")
 	guildID := requireEnv("DISCORD_GUILD_ID")
@@ -19,12 +22,14 @@ func main() {
 
 	pool, err := db.NewPool(ctx, databaseURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
 	if err := db.Migrate(ctx, pool); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		slog.Error("failed to run migrations", "error", err)
+		os.Exit(1)
 	}
 
 	cfg := bot.Config{
@@ -37,14 +42,16 @@ func main() {
 	}
 
 	if err := bot.Run(cfg); err != nil {
-		log.Fatalf("Bot exited with error: %v", err)
+		slog.Error("bot exited with error", "error", err)
+		os.Exit(1)
 	}
 }
 
 func requireEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
-		log.Fatalf("Required environment variable %s is not set", key)
+		slog.Error("required environment variable is not set", "key", key)
+		os.Exit(1)
 	}
 	return value
 }

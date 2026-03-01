@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -53,7 +53,7 @@ func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID s
 
 	if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
 		if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
-			log.Printf("Failed to rollback channel %s after DB failure for study %q: %v", st.ChannelID, st.Name, rollbackErr)
+			slog.Error("failed to rollback channel after DB failure", "channel_id", st.ChannelID, "study_name", st.Name, "error", rollbackErr)
 			return archiveResult{}, fmt.Errorf("archive study %q in DB (rollback also failed): %w", st.Name, err)
 		}
 		reservation.Release()
@@ -62,7 +62,7 @@ func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID s
 
 	warning := ""
 	if err := s.GuildRoleDelete(guildID, st.RoleID); err != nil {
-		log.Printf("Failed to delete role %s for study %q: %v", st.RoleID, st.Name, err)
+		slog.Warn("failed to delete role for archived study", "role_id", st.RoleID, "study_name", st.Name, "error", err)
 		warning = "role deletion failed"
 	}
 
@@ -83,7 +83,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
-			log.Printf("Failed to find study by channel %q: %v", channelID, err)
+			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
 			respondError(s, i, "No study found for the selected channel.")
 			return
 		}
@@ -95,7 +95,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 
 		result, err := archiveStudy(s, studyRepo, i.GuildID, st)
 		if err != nil {
-			log.Printf("Failed to archive study %q: %v", st.Name, err)
+			slog.Error("failed to archive study", "study_id", st.ID, "study_name", st.Name, "error", err)
 			respondError(s, i, fmt.Sprintf("Failed to archive study: %v", err))
 			return
 		}
@@ -127,7 +127,7 @@ func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(s *d
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
-			log.Printf("Failed to load active studies for autocomplete: %v", err)
+			slog.Error("failed to load active studies for archive autocomplete", "error", err)
 			respondAutocomplete(s, i, nil)
 			return
 		}
@@ -154,7 +154,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
-			log.Printf("Failed to find active studies: %v", err)
+			slog.Error("failed to find active studies", "error", err)
 			respondError(s, i, "Failed to load active studies.")
 			return
 		}
@@ -167,7 +167,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 		if dryRun {
 			allocator, err := newArchiveCategoryAllocator(s, i.GuildID)
 			if err != nil {
-				log.Printf("Failed to prepare archive category allocator: %v", err)
+				slog.Error("failed to prepare archive category allocator", "error", err)
 				respondError(s, i, "Failed to prepare archive category.")
 				return
 			}
@@ -197,7 +197,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 		for _, st := range studies {
 			result, err := archiveStudy(s, studyRepo, i.GuildID, st)
 			if err != nil {
-				log.Printf("Failed to archive study %q: %v", st.Name, err)
+				slog.Error("failed to archive study", "study_id", st.ID, "study_name", st.Name, "error", err)
 				failures = append(failures, archiveFailure{studyName: st.Name, reason: err.Error()})
 				continue
 			}

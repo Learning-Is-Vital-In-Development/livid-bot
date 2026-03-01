@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -40,7 +40,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 
 		categoryID, err := ensureCategoryID(s, guildID, "active")
 		if err != nil {
-			log.Printf("Failed to ensure active category: %v", err)
+			slog.Error("failed to ensure active category", "guild_id", guildID, "error", err)
 			respondError(s, i, "Failed to prepare active category.")
 			return
 		}

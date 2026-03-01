@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"livid-bot/db"
@@ -44,7 +44,7 @@ func newStudyStartHandler(
 
 		messageIDs, studyInfos, err := recruitRepo.FindOpenMappingsByBranch(ctx, branch)
 		if err != nil {
-			log.Printf("Failed to find open mappings for branch %q: %v", branch, err)
+			slog.Error("failed to find open mappings by branch", "branch", branch, "error", err)
 			respondError(s, i, "Failed to load recruitment data.")
 			return
 		}
@@ -57,7 +57,7 @@ func newStudyStartHandler(
 		reactionHandler.Untrack(messageIDs)
 
 		if _, err := recruitRepo.CloseByBranch(ctx, branch); err != nil {
-			log.Printf("Failed to close recruit messages for branch %q: %v", branch, err)
+			slog.Error("failed to close recruit messages by branch", "branch", branch, "error", err)
 			respondError(s, i, "Failed to close recruitment.")
 			return
 		}
@@ -69,7 +69,7 @@ func newStudyStartHandler(
 		for _, info := range studyInfos {
 			members, err := memberRepo.FindActiveByStudyID(ctx, info.StudyID)
 			if err != nil {
-				log.Printf("Failed to load members for study %q (id=%d): %v", info.StudyName, info.StudyID, err)
+				slog.Error("failed to load members for study", "study_id", info.StudyID, "study_name", info.StudyName, "error", err)
 				errors = append(errors, fmt.Sprintf("%s: failed to load members", info.StudyName))
 				continue
 			}
@@ -77,7 +77,7 @@ func newStudyStartHandler(
 			if len(members) < minMembersToStart {
 				archiveResult, archiveErr := archiveStudy(s, studyRepo, i.GuildID, studyToModel(info))
 				if archiveErr != nil {
-					log.Printf("Failed to auto-archive study %q: %v", info.StudyName, archiveErr)
+					slog.Error("failed to auto-archive study", "study_id", info.StudyID, "study_name", info.StudyName, "error", archiveErr)
 					errors = append(errors, fmt.Sprintf("%s: archive failed", info.StudyName))
 					continue
 				}
@@ -85,7 +85,7 @@ func newStudyStartHandler(
 				if _, msgErr := s.ChannelMessageSend(info.ChannelID,
 					fmt.Sprintf("모집 인원이 %d명 미만이어서 스터디가 자동 아카이브되었습니다.", minMembersToStart),
 				); msgErr != nil {
-					log.Printf("Failed to send archive notice to channel %s: %v", info.ChannelID, msgErr)
+					slog.Warn("failed to send archive notice to channel", "channel_id", info.ChannelID, "error", msgErr)
 				}
 
 				archiveEntry := info.StudyName
@@ -97,7 +97,7 @@ func newStudyStartHandler(
 				if _, msgErr := s.ChannelMessageSend(info.ChannelID,
 					fmt.Sprintf("<@&%s> 스터디에 오신 것을 환영합니다! 스터디를 진행해주세요.", info.RoleID),
 				); msgErr != nil {
-					log.Printf("Failed to send start notice to channel %s: %v", info.ChannelID, msgErr)
+					slog.Warn("failed to send start notice to channel", "channel_id", info.ChannelID, "error", msgErr)
 				}
 
 				started = append(started, info.StudyName)
@@ -140,7 +140,7 @@ func newStudyStartAutocompleteHandler(studyRepo *db.StudyRepository) func(s *dis
 
 		branches, err := studyRepo.FindDistinctActiveBranches(ctx)
 		if err != nil {
-			log.Printf("Failed to load active branches for study-start autocomplete: %v", err)
+			slog.Error("failed to load active branches for study-start autocomplete", "error", err)
 			respondAutocomplete(s, i, nil)
 			return
 		}

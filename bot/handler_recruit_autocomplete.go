@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -19,7 +19,7 @@ func newRecruitBranchAutocompleteHandler(studyRepo *db.StudyRepository) func(s *
 
 		branches, err := studyRepo.FindDistinctActiveBranches(ctx)
 		if err != nil {
-			log.Printf("Failed to load active branches for recruit autocomplete: %v", err)
+			slog.Error("failed to load active branches for recruit autocomplete", "error", err)
 			respondRecruitBranchAutocomplete(s, i, nil)
 			return
 		}
@@ -59,6 +59,6 @@ func respondRecruitBranchAutocomplete(s *discordgo.Session, i *discordgo.Interac
 			Choices: choices,
 		},
 	}); err != nil {
-		log.Printf("Failed to respond recruit branch autocomplete: %v", err)
+		slog.Error("failed to respond recruit branch autocomplete", "error", err)
 	}
 }

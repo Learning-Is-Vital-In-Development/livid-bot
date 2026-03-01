@@ -2,7 +2,7 @@ package bot
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 
@@ -32,7 +32,7 @@ func Run(cfg Config) error {
 	// Initialize reaction handler and load existing mappings from DB
 	reactionHandler := NewReactionHandler(cfg.MemberRepo)
 	if err := reactionHandler.LoadFromDB(cfg.RecruitRepo); err != nil {
-		log.Printf("Warning: failed to load reaction mappings: %v", err)
+		slog.Warn("failed to load reaction mappings", "error", err)
 	}
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
@@ -77,7 +77,7 @@ func Run(cfg Config) error {
 	}
 	defer func() {
 		if err := discord.Close(); err != nil {
-			log.Printf("Warning: failed to close discord session: %v", err)
+			slog.Warn("failed to close discord session", "error", err)
 		}
 	}()
 
@@ -87,7 +87,7 @@ func Run(cfg Config) error {
 		}
 	}
 
-	log.Println("Bot running.... Press CTRL + C to exit")
+	slog.Info("bot running; press CTRL + C to exit")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
