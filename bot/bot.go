@@ -39,6 +39,7 @@ func Run(cfg Config) {
 		"create-study":  newCreateStudyHandler(cfg.StudyRepo),
 		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
 		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
+		"studies":       newStudiesHandler(cfg.StudyRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
