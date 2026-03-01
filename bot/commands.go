@@ -32,6 +32,12 @@ var commands = []*discordgo.ApplicationCommand{
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "branch",
+				Description: "Study branch in YY-Q format (Q: 1~4). ex) 26-2",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        "name",
 				Description: "Study name",
 				Required:    true,
@@ -54,6 +60,13 @@ var commands = []*discordgo.ApplicationCommand{
 				Name:        "channel",
 				Description: "Channel to post the recruitment message",
 				Required:    true,
+			},
+			{
+				Type:         discordgo.ApplicationCommandOptionString,
+				Name:         "branch",
+				Description:  "Target branch in YY-Q format (Q: 1~4). ex) 26-2",
+				Required:     true,
+				Autocomplete: true,
 			},
 			{
 				Type:        discordgo.ApplicationCommandOptionString,

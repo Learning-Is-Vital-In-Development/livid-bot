@@ -4,6 +4,7 @@ import "time"
 
 type Study struct {
 	ID          int64
+	Branch      string
 	Name        string
 	Description string
 	ChannelID   string
