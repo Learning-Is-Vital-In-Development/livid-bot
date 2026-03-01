@@ -45,7 +45,12 @@ docker compose up --build
 
 ### `/help`
 - 호출자 권한 기준으로 사용 가능한 명령어를 안내
-- 응답은 ephemeral(호출자에게만 표시)
+- 옵션
+  - `command` (string, optional, autocomplete)
+- 동작
+  - 옵션 미입력: 사용 가능한 명령 목록을 카드(Embed)로 표시
+  - 옵션 입력: 선택한 명령의 상세 정보(설명/권한/옵션)를 카드(Embed)로 표시
+  - 응답은 ephemeral(호출자에게만 표시)
 
 ### `/members`
 - 옵션
