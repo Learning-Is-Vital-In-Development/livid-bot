@@ -1,8 +1,6 @@
 package bot
 
 import (
-	"net/http"
-
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -27,14 +25,6 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	attachmentID := optionMap["screenshot"].Value.(string)
 	attachmentUrl := i.ApplicationCommandData().Resolved.Attachments[attachmentID].URL
 
-	res, resError := http.DefaultClient.Get(attachmentUrl)
-	if resError != nil {
-		logCommand(i, "error", "failed to fetch attachment url=%s err=%v", attachmentUrl, resError)
-		respondError(s, i, "Could not get response")
-		return
-	}
-	defer res.Body.Close()
-
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -52,7 +42,7 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 						URL: attachmentUrl,
 					},
 					Author: interactionAuthor(i),
-					Color: 0x9400D3,
+					Color:  0x9400D3,
 				},
 			},
 		},

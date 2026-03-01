@@ -119,12 +119,12 @@ func (a *archiveCategoryAllocator) getOrCreateWritableSlot() (*archiveCategorySl
 		return a.createSlot(1)
 	}
 
-	last := &a.slots[len(a.slots)-1]
-	if last.ChannelCount < archiveCategoryMaxChannels {
-		return last, nil
+	lastIdx := len(a.slots) - 1
+	if a.slots[lastIdx].ChannelCount < archiveCategoryMaxChannels {
+		return &a.slots[lastIdx], nil
 	}
 
-	return a.createSlot(last.Number + 1)
+	return a.createSlot(a.slots[lastIdx].Number + 1)
 }
 
 func (a *archiveCategoryAllocator) createSlot(number int) (*archiveCategorySlot, error) {

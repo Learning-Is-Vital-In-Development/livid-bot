@@ -10,10 +10,10 @@ import (
 )
 
 func main() {
-	token := os.Getenv("DISCORD_BOT_TOKEN")
-	appID := os.Getenv("DISCORD_APPLICATION_ID")
-	guildID := os.Getenv("DISCORD_GUILD_ID")
-	databaseURL := os.Getenv("DATABASE_URL")
+	token := requireEnv("DISCORD_BOT_TOKEN")
+	appID := requireEnv("DISCORD_APPLICATION_ID")
+	guildID := requireEnv("DISCORD_GUILD_ID")
+	databaseURL := requireEnv("DATABASE_URL")
 
 	ctx := context.Background()
 
@@ -39,4 +39,12 @@ func main() {
 	if err := bot.Run(cfg); err != nil {
 		log.Fatalf("Bot exited with error: %v", err)
 	}
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("Required environment variable %s is not set", key)
+	}
+	return value
 }
