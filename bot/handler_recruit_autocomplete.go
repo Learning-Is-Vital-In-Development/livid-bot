@@ -14,6 +14,9 @@ const recruitBranchAutocompleteMaxChoices = 25
 func newRecruitBranchAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		ctx := context.Background()
+		query := focusedStringOptionValue(i.ApplicationCommandData().Options, "branch")
+		logCommand(i, "start", "recruit branch autocomplete query=%q", query)
+
 		branches, err := studyRepo.FindDistinctActiveBranches(ctx)
 		if err != nil {
 			log.Printf("Failed to load active branches for recruit autocomplete: %v", err)
@@ -21,9 +24,9 @@ func newRecruitBranchAutocompleteHandler(studyRepo *db.StudyRepository) func(s *
 			return
 		}
 
-		query := focusedStringOptionValue(i.ApplicationCommandData().Options, "branch")
 		choices := buildRecruitBranchAutocompleteChoices(branches, query, recruitBranchAutocompleteMaxChoices)
 		respondRecruitBranchAutocomplete(s, i, choices)
+		logCommand(i, "success", "recruit branch autocomplete choices=%d", len(choices))
 	}
 }
 

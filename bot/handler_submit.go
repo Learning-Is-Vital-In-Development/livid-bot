@@ -1,8 +1,6 @@
 package bot
 
 import (
-	"errors"
-	"log"
 	"net/http"
 
 	"github.com/bwmarrin/discordgo"
@@ -15,9 +13,10 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	for _, option := range options {
 		optionMap[option.Name] = option
 	}
+	link := optionMap["link"].StringValue()
+	logCommand(i, "start", "submit command invoked link=%s", link)
 
 	// Markdown link conversion
-	link := optionMap["link"].StringValue()
 	markdown, err := ConvertLinkToMarkdown(link)
 	if err != nil {
 		respondError(s, i, "Error converting link to markdown")
@@ -30,13 +29,13 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	res, resError := http.DefaultClient.Get(attachmentUrl)
 	if resError != nil {
-		log.Println(errors.New("could not get response from code explain bot"))
+		logCommand(i, "error", "failed to fetch attachment url=%s err=%v", attachmentUrl, resError)
 		respondError(s, i, "Could not get response")
 		return
 	}
 	defer res.Body.Close()
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Embeds: []*discordgo.MessageEmbed{
@@ -61,5 +60,9 @@ func handleSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 				},
 			},
 		},
-	})
+	}); err != nil {
+		logCommand(i, "error", "failed to respond submit command: %v", err)
+		return
+	}
+	logCommand(i, "success", "submit processed link=%s attachment=%s", link, attachmentID)
 }

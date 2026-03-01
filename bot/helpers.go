@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/bwmarrin/discordgo"
@@ -13,13 +14,16 @@ func checkNilErr(e error) {
 }
 
 func respondError(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	logCommand(i, "error", "%s", message)
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: message,
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
-	})
+	}); err != nil {
+		logCommand(i, "error", "failed to respond error message: %v", err)
+	}
 }
 
 func boolPtr(v bool) *bool {
@@ -28,4 +32,50 @@ func boolPtr(v bool) *bool {
 
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+func logCommand(i *discordgo.InteractionCreate, stage, format string, args ...interface{}) {
+	commandName := interactionCommandName(i)
+	guildID := "unknown"
+	userID := "unknown"
+	if i != nil {
+		if i.GuildID != "" {
+			guildID = i.GuildID
+		}
+		userID = interactionUserID(i)
+	}
+
+	prefix := fmt.Sprintf("[cmd=%s stage=%s guild=%s user=%s]", commandName, stage, guildID, userID)
+	if format == "" {
+		log.Printf("%s", prefix)
+		return
+	}
+	log.Printf("%s %s", prefix, fmt.Sprintf(format, args...))
+}
+
+func interactionCommandName(i *discordgo.InteractionCreate) string {
+	if i == nil {
+		return "unknown"
+	}
+	if i.Type != discordgo.InteractionApplicationCommand && i.Type != discordgo.InteractionApplicationCommandAutocomplete {
+		return "unknown"
+	}
+	data := i.ApplicationCommandData()
+	if data.Name == "" {
+		return "unknown"
+	}
+	return data.Name
+}
+
+func interactionUserID(i *discordgo.InteractionCreate) string {
+	if i == nil {
+		return "unknown"
+	}
+	if i.Member != nil && i.Member.User != nil && i.Member.User.ID != "" {
+		return i.Member.User.ID
+	}
+	if i.User != nil && i.User.ID != "" {
+		return i.User.ID
+	}
+	return "unknown"
 }

@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -26,6 +25,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		branch := optionMap["branch"].StringValue()
 		fromStr := optionMap["from"].StringValue()
 		toStr := optionMap["to"].StringValue()
+		logCommand(i, "start", "recruit requested branch=%s channel=%s from=%s to=%s", branch, channelID, fromStr, toStr)
 
 		if !isValidBranch(branch) {
 			respondError(s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
@@ -51,7 +51,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		ctx := context.Background()
 		studies, err := studyRepo.FindAllActiveByBranch(ctx, branch)
 		if err != nil {
-			log.Printf("Failed to find active studies for branch %s: %v", branch, err)
+			logCommand(i, "error", "failed to load active studies branch=%s err=%v", branch, err)
 			respondError(s, i, "Failed to load studies.")
 			return
 		}
@@ -72,7 +72,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		// Send message to specified channel
 		msg, err := s.ChannelMessageSend(channelID, content)
 		if err != nil {
-			log.Printf("Failed to send recruit message: %v", err)
+			logCommand(i, "error", "failed to send recruit message branch=%s channel=%s err=%v", branch, channelID, err)
 			respondError(s, i, "Failed to send recruitment message.")
 			return
 		}
@@ -80,7 +80,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		// Add reactions
 		for idx := range studies {
 			if err := s.MessageReactionAdd(channelID, msg.ID, numberEmojis[idx]); err != nil {
-				log.Printf("Failed to add reaction %s: %v", numberEmojis[idx], err)
+				logCommand(i, "error", "failed to add reaction emoji=%s message=%s err=%v", numberEmojis[idx], msg.ID, err)
 			}
 		}
 
@@ -95,7 +95,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		}
 
 		if err := recruitRepo.SaveRecruitMessage(ctx, msg.ID, channelID, mappings); err != nil {
-			log.Printf("Failed to save recruit message to DB: %v", err)
+			logCommand(i, "error", "failed to save recruit message mapping message=%s err=%v", msg.ID, err)
 		}
 
 		// Update in-memory mapping
@@ -108,13 +108,17 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		}
 		reactionHandler.Track(msg.ID, emojiRoleMap)
 
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf("Recruitment message posted in <#%s>!", channelID),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		})
+		}); err != nil {
+			logCommand(i, "error", "failed to respond recruit success: %v", err)
+			return
+		}
+		logCommand(i, "success", "recruit posted branch=%s studies=%d message=%s channel=%s", branch, len(studies), msg.ID, channelID)
 	}
 }
 

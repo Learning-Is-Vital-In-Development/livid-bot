@@ -31,6 +31,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 		}
 
 		channelID := optionMap["channel"].StringValue()
+		logCommand(i, "start", "archive-study requested channel=%s", channelID)
 		ctx := context.Background()
 
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
@@ -92,12 +93,16 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 			warning = "\nWarning: Role deletion failed. Please remove it manually if needed."
 		}
 
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, targetCategoryName, warning),
 			},
-		})
+		}); err != nil {
+			logCommand(i, "error", "failed to respond archive-study success: %v", err)
+			return
+		}
+		logCommand(i, "success", "archived study id=%d name=%s channel=%s category=%s", st.ID, st.Name, st.ChannelID, targetCategoryName)
 	}
 }
 
@@ -105,6 +110,8 @@ func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(s *d
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		ctx := context.Background()
 		data := i.ApplicationCommandData()
+		query := focusedStringOptionValue(data.Options, "channel")
+		logCommand(i, "start", "archive-study autocomplete query=%q", query)
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
@@ -113,9 +120,9 @@ func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(s *d
 			return
 		}
 
-		query := focusedStringOptionValue(data.Options, "channel")
 		choices := buildArchiveStudyAutocompleteChoices(studies, query, archiveAutocompleteMaxChoices)
 		respondArchiveAutocomplete(s, i, choices)
+		logCommand(i, "success", "archive-study autocomplete choices=%d", len(choices))
 	}
 }
 
@@ -131,6 +138,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 		if opt, ok := optionMap["dry-run"]; ok {
 			dryRun = opt.BoolValue()
 		}
+		logCommand(i, "start", "archive-all requested dry_run=%t", dryRun)
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
@@ -157,13 +165,17 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 				studyNames[idx] = st.Name
 			}
 			plan := allocator.Plan(len(studies))
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: buildArchiveAllDryRunSummary(studyNames, plan),
 					Flags:   discordgo.MessageFlagsEphemeral,
 				},
-			})
+			}); err != nil {
+				logCommand(i, "error", "failed to respond archive-all dry-run: %v", err)
+				return
+			}
+			logCommand(i, "success", "archive-all dry-run studies=%d planned_categories=%d", len(studies), len(plan.CategoryUseCounts))
 			return
 		}
 
@@ -214,12 +226,16 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 			successCount++
 		}
 
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: buildArchiveAllSummary(len(studies), successCount, failures, warnings),
 			},
-		})
+		}); err != nil {
+			logCommand(i, "error", "failed to respond archive-all summary: %v", err)
+			return
+		}
+		logCommand(i, "success", "archive-all completed total=%d success=%d failures=%d warnings=%d", len(studies), successCount, len(failures), len(warnings))
 	}
 }
 

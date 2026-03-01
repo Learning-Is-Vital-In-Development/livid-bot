@@ -50,11 +50,13 @@ func Run(cfg Config) {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			commandName := i.ApplicationCommandData().Name
+			logCommand(i, "dispatch", "received application command")
 			if h, ok := commandHandlers[commandName]; ok {
 				h(s, i)
 			}
 		case discordgo.InteractionApplicationCommandAutocomplete:
 			commandName := i.ApplicationCommandData().Name
+			logCommand(i, "dispatch", "received autocomplete interaction")
 			if h, ok := autocompleteHandlers[commandName]; ok {
 				h(s, i)
 			}
