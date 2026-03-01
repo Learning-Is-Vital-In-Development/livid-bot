@@ -1,10 +1,8 @@
-FROM golang:1.22.4 AS builder
+FROM golang:1.24 AS builder
 WORKDIR /app
-ENV DISCORD_BOT_TOKEN="your_bot_token_here"
-ENV DISCORD_APPLICATION_ID="your_application_id_here"
-ENV DISCORD_GUILD_ID="your_guild_id_here"
-COPY . .
+COPY go.mod go.sum ./
 RUN go mod download
+COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
 FROM alpine:latest
