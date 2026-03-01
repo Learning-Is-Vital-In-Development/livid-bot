@@ -69,4 +69,22 @@ var commands = []*discordgo.ApplicationCommand{
 			},
 		},
 	},
+	{
+		Name:                     "archive-study",
+		Description:              "Archive a specific study",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "name",
+				Description: "Name of the study to archive",
+				Required:    true,
+			},
+		},
+	},
+	{
+		Name:                     "archive-all",
+		Description:              "Archive all active studies",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+	},
 }
