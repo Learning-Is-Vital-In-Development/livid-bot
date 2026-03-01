@@ -135,5 +135,12 @@ time=2026-03-02T10:00:00Z level=INFO msg="create-study requested branch=26-2 nam
 time=2026-03-02T10:00:01Z level=INFO msg="created study branch=26-2 name=algo channel=... role=..." cmd=create-study stage=success guild=... user=...
 ```
 
+## Command Audit
+- 모든 슬래시 명령(`InteractionApplicationCommand`) 호출은 `command_audit_logs` 테이블에 기록됩니다.
+- key는 Discord interaction ID (`i.Interaction.ID`)를 사용합니다.
+- 기록 단계: `triggered` -> `success` 또는 `error`
+- autocomplete 인터랙션은 audit 대상에서 제외됩니다.
+- audit 저장이 실패해도 사용자 명령은 계속 실행됩니다.
+
 ## 참고
 - 봇 토큰/애플리케이션 정보가 필요한 경우 서버 관리자에게 문의하세요.

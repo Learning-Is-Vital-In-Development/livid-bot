@@ -17,9 +17,12 @@ type Config struct {
 	StudyRepo     *db.StudyRepository
 	MemberRepo    *db.MemberRepository
 	RecruitRepo   *db.RecruitRepository
+	AuditRepo     CommandAuditStore
 }
 
 func Run(cfg Config) error {
+	setCommandAuditStore(cfg.AuditRepo)
+
 	discord, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
 		return fmt.Errorf("create discord session: %w", err)
@@ -56,9 +59,12 @@ func Run(cfg Config) error {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			commandName := i.ApplicationCommandData().Name
+			recordCommandTriggered(i)
 			logCommand(i, "dispatch", "received application command")
 			if h, ok := commandHandlers[commandName]; ok {
 				h(s, i)
+			} else {
+				logCommand(i, "error", "no handler registered for command=%s", commandName)
 			}
 		case discordgo.InteractionApplicationCommandAutocomplete:
 			commandName := i.ApplicationCommandData().Name
