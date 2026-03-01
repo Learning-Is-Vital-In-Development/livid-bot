@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
@@ -25,8 +26,19 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 
 		guildID := i.GuildID
 
+		categoryID, err := ensureCategoryID(s, guildID, "active")
+		if err != nil {
+			log.Printf("Failed to ensure active category: %v", err)
+			respondError(s, i, "Failed to prepare active category.")
+			return
+		}
+
 		// Create Discord channel
-		channel, err := s.GuildChannelCreate(guildID, name, discordgo.ChannelTypeGuildText)
+		channel, err := s.GuildChannelCreateComplex(guildID, discordgo.GuildChannelCreateData{
+			Name:     name,
+			Type:     discordgo.ChannelTypeGuildText,
+			ParentID: categoryID,
+		})
 		if err != nil {
 			log.Printf("Failed to create channel: %v", err)
 			respondError(s, i, "Failed to create channel.")
@@ -72,4 +84,27 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 			},
 		})
 	}
+}
+
+func ensureCategoryID(s *discordgo.Session, guildID, categoryName string) (string, error) {
+	channels, err := s.GuildChannels(guildID)
+	if err != nil {
+		return "", err
+	}
+
+	for _, ch := range channels {
+		if ch.Type == discordgo.ChannelTypeGuildCategory && strings.EqualFold(ch.Name, categoryName) {
+			return ch.ID, nil
+		}
+	}
+
+	category, err := s.GuildChannelCreateComplex(guildID, discordgo.GuildChannelCreateData{
+		Name: categoryName,
+		Type: discordgo.ChannelTypeGuildCategory,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return category.ID, nil
 }
