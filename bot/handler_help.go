@@ -8,11 +8,13 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-const helpAutocompleteMaxChoices = 25
-const helpAutocompleteChoiceNameLimit = 100
-const helpEmbedDescriptionLimit = 4000
-const helpEmbedFieldLimit = 1000
-const helpEmbedColor = 0x5865F2
+const (
+	helpAutocompleteMaxChoices      = 25
+	helpAutocompleteChoiceNameLimit = 100
+	helpEmbedDescriptionLimit       = 4000
+	helpEmbedFieldLimit             = 1000
+	helpEmbedColor                  = 0x5865F2
+)
 
 func handleHelp(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logCommand(i, "start", "help command invoked")
@@ -285,19 +287,19 @@ func localizedCommandDescription(cmd *discordgo.ApplicationCommand) string {
 	case "help":
 		return "사용 가능한 명령어 안내"
 	case "create-study":
-		return "새 스터디 채널과 역할 생성"
+		return "새 스터디 채널과 역할(role) 생성"
 	case "recruit":
-		return "활성 스터디 모집 메시지 게시"
+		return "스터디 모집 메시지 게시(active study only)"
 	case "archive-study":
-		return "특정 스터디 아카이브"
+		return "스터디 고유 역할(role)을 제거하고 채널을 아카이브(archive) 상태로 전환"
 	case "studies":
 		return "분기/상태 기준 스터디 목록 조회"
 	case "members":
-		return "스터디 활성 멤버 조회"
+		return "role 을 사용하여 스터디에 속한 멤버 목록을 조회"
 	case "study-start":
-		return "분기 모집 종료 및 스터디 시작 처리"
+		return "분기 모집 종료 및 스터디 시작 공지"
 	case "archive-all":
-		return "활성 스터디 전체 아카이브"
+		return "활성(active) 스터디 전체 아카이브"
 	default:
 		return cmd.Description
 	}
