@@ -26,3 +26,5 @@ livid-bot
 .env
 .mise.toml
 .jj
+
+.claude/settings.local.json

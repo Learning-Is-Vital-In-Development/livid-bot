@@ -88,10 +88,8 @@ func Run(cfg Config) error {
 		}
 	}()
 
-	for _, command := range commands {
-		if _, err := discord.ApplicationCommandCreate(cfg.ApplicationID, cfg.GuildID, command); err != nil {
-			return fmt.Errorf("register command %q: %w", command.Name, err)
-		}
+	if err := syncCommands(discord, cfg.ApplicationID, cfg.GuildID); err != nil {
+		return fmt.Errorf("sync commands: %w", err)
 	}
 
 	slog.Info("bot running; press CTRL + C to exit")
