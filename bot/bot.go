@@ -1,161 +1,101 @@
 package bot
 
 import (
-	"errors"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"log"
-	"net/http"
+	"log/slog"
 	"os"
 	"os/signal"
+
+	"github.com/bwmarrin/discordgo"
+	"livid-bot/db"
 )
 
-var BotToken string
-var ApplicationID string
-var GuildID string
-
-var (
-	commands = []*discordgo.ApplicationCommand{
-		{
-			Name:        "hello",
-			Description: "Say Hello",
-		},
-		{
-			Name:        "submit",
-			Description: "Submit a link",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionAttachment,
-					Name:        "screenshot",
-					Description: "Screenshot of problem solution",
-					Required:    true,
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "link",
-					Description: "Link to submit",
-					Required:    true,
-				},
-			},
-		},
-	}
-
-	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"hello": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "Hello Command! 😃",
-				},
-			})
-		},
-
-		"submit": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			options := i.ApplicationCommandData().Options
-
-			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
-			for _, option := range options {
-				optionMap[option.Name] = option
-			}
-
-			// Markdown link conversion
-			link := optionMap["link"].StringValue()
-			markdown, err := ConvertLinkToMarkdown(link)
-			if err != nil {
-				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: "Error converting link to markdown",
-					},
-				})
-				return
-			}
-
-			// attachment
-			attachmentID := optionMap["screenshot"].Value.(string)
-			attachmentUrl := i.ApplicationCommandData().Resolved.Attachments[attachmentID].URL
-
-			res, resError := http.DefaultClient.Get(attachmentUrl)
-			defer res.Body.Close()
-			if resError != nil {
-				log.Println(errors.New("could not get response from code explain bot"))
-				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: "Could not get response",
-					},
-				})
-				return
-			}
-
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Embeds: []*discordgo.MessageEmbed{
-						{
-							Title: "New Submission! 🚀",
-							URL:   link,
-							Fields: []*discordgo.MessageEmbedField{
-								{
-									Name:  "Challenge",
-									Value: markdown,
-								},
-							},
-							Image: &discordgo.MessageEmbedImage{
-								URL: attachmentUrl,
-							},
-							Author: &discordgo.MessageEmbedAuthor{
-								Name:    i.Member.User.Username,
-								URL:     "https://discord.com/users/" + i.Member.User.ID,
-								IconURL: i.Member.User.AvatarURL(""),
-							},
-							Color: 0x9400D3,
-						},
-					},
-				},
-			})
-		},
-	}
-)
-
-func checkNilErr(e error) {
-	if e != nil {
-		log.Fatal(e.Error())
-	}
+type Config struct {
+	BotToken      string
+	ApplicationID string
+	GuildID       string
+	StudyRepo     *db.StudyRepository
+	MemberRepo    *db.MemberRepository
+	RecruitRepo   *db.RecruitRepository
+	AuditRepo     CommandAuditStore
 }
 
-func Run() {
+func Run(cfg Config) error {
+	setCommandAuditStore(cfg.AuditRepo)
 
-	// create a session
-	discord, err := discordgo.New("Bot " + BotToken)
-	checkNilErr(err)
+	discord, err := discordgo.New("Bot " + cfg.BotToken)
+	if err != nil {
+		return fmt.Errorf("create discord session: %w", err)
+	}
 
-	// add a event handler
+	discord.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsGuildMessageReactions
+
+	// Initialize reaction handler and load existing mappings from DB
+	reactionHandler := NewReactionHandler(cfg.MemberRepo)
+	if err := reactionHandler.LoadFromDB(cfg.RecruitRepo); err != nil {
+		slog.Warn("failed to load reaction mappings", "error", err)
+	}
+
+	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"help":          handleHelp,
+		"create-study":  newCreateStudyHandler(cfg.StudyRepo),
+		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
+		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
+		"studies":       newStudiesHandler(cfg.StudyRepo),
+		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
+		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
+		"study-start":   newStudyStartHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
+	}
+	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"help":          handleHelpAutocomplete,
+		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
+		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
+		"recruit":       newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
+		"study-start":   newStudyStartAutocompleteHandler(cfg.StudyRepo),
+	}
+
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
-			h(s, i)
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			commandName := i.ApplicationCommandData().Name
+			recordCommandTriggered(i)
+			logCommand(i, "dispatch", "received application command")
+			if h, ok := commandHandlers[commandName]; ok {
+				h(s, i)
+			} else {
+				logCommand(i, "error", "no handler registered for command=%s", commandName)
+			}
+		case discordgo.InteractionApplicationCommandAutocomplete:
+			commandName := i.ApplicationCommandData().Name
+			logCommand(i, "dispatch", "received autocomplete interaction")
+			if h, ok := autocompleteHandlers[commandName]; ok {
+				h(s, i)
+			}
 		}
 	})
 
-	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
-	for i, command := range commands {
-		cmd, err := discord.ApplicationCommandCreate(ApplicationID, GuildID, command)
-		checkNilErr(err)
-		registeredCommands[i] = cmd
+	discord.AddHandler(reactionHandler.OnReactionAdd)
+	discord.AddHandler(reactionHandler.OnReactionRemove)
+
+	if err := discord.Open(); err != nil {
+		return fmt.Errorf("open discord session: %w", err)
+	}
+	defer func() {
+		if err := discord.Close(); err != nil {
+			slog.Warn("failed to close discord session", "error", err)
+		}
+	}()
+
+	if err := syncCommands(discord, cfg.ApplicationID, cfg.GuildID); err != nil {
+		return fmt.Errorf("sync commands: %w", err)
 	}
 
-	// open session
-	err = discord.Open()
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	defer discord.Close() // close session, after function termination
-
-	// keep bot running untill there is NO os interruption (ctrl + C)
-	fmt.Println("Bot running.... Press CTRL + C to exit")
+	slog.Info("bot running; press CTRL + C to exit")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
+
+	return nil
 }

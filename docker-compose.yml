@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    labels:
+      autoheal: "true"
+    environment:
+      POSTGRES_USER: livid
+      POSTGRES_PASSWORD: livid
+      POSTGRES_DB: livid
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U livid -d livid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  bot:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      DATABASE_URL: postgres://livid:livid@db:5432/livid?sslmode=disable
+      LOG_FILE_ENABLED: "true"
+      LOG_FILE_PATH: /var/log/livid-bot/bot.log
+      LOG_FILE_MAX_SIZE_MB: "10"
+      LOG_FILE_MAX_BACKUPS: "900"
+      LOG_FILE_MAX_AGE_DAYS: "730"
+      LOG_FILE_COMPRESS: "true"
+    volumes:
+      - ./logs:/var/log/livid-bot
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    restart: always
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 10
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  pgdata:
