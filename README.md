@@ -23,6 +23,12 @@ DISCORD_GUILD_ID=<YOUR_GUILD_ID>
 DATABASE_URL=postgres://livid:livid@localhost:15432/livid?sslmode=disable
 LOG_FORMAT=text   # text | json (default: text)
 LOG_LEVEL=info    # debug | info | warn | error (default: info)
+LOG_FILE_ENABLED=false
+LOG_FILE_PATH=/var/log/livid-bot/bot.log
+LOG_FILE_MAX_SIZE_MB=10
+LOG_FILE_MAX_BACKUPS=900
+LOG_FILE_MAX_AGE_DAYS=730
+LOG_FILE_COMPRESS=true
 ```
 
 예시는 [.env.example](.env.example) 참고.
@@ -137,6 +143,22 @@ go test ./... -cover
 - `LOG_FORMAT=text`(기본): 사람이 읽기 쉬운 key=value 형식
 - `LOG_FORMAT=json`: JSON 단일 라인 형식
 - `LOG_LEVEL`로 최소 출력 레벨 제어
+- `LOG_FILE_ENABLED=true`면 로그를 파일에도 동시 저장합니다.
+- 파일 저장은 `lumberjack`(size 기반 rotation)으로 처리합니다.
+  - `LOG_FILE_MAX_SIZE_MB`: 단일 파일 최대 크기
+  - `LOG_FILE_MAX_BACKUPS`: 보관할 백업 파일 수
+  - `LOG_FILE_MAX_AGE_DAYS`: 보관 최대 일수
+  - `LOG_FILE_COMPRESS=true`: 회전 파일 gzip 압축
+
+Docker Compose 기본 설정(`docker-compose.yml`):
+- 파일 로그 경로: `./logs`(호스트) -> `/var/log/livid-bot`(컨테이너)
+- 파일 로그 정책: `10MB * 901개(현재+백업)` 약 9GB 수준
+- Docker stdout 로그 정책: `json-file`, `20m * 5` (약 100MB)
+- 총량은 bot 로그 기준 10GB 이내를 목표로 구성되어 있습니다.
+
+주의:
+- 파일 로그의 `MaxAge` 정리는 회전 시점에 적용됩니다.
+- `docker compose down`으로 컨테이너를 삭제해도 `./logs`는 유지됩니다.
 
 예시:
 ```text

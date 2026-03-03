@@ -28,6 +28,19 @@ services:
       DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       DATABASE_URL: postgres://livid:livid@db:5432/livid?sslmode=disable
+      LOG_FILE_ENABLED: "true"
+      LOG_FILE_PATH: /var/log/livid-bot/bot.log
+      LOG_FILE_MAX_SIZE_MB: "10"
+      LOG_FILE_MAX_BACKUPS: "900"
+      LOG_FILE_MAX_AGE_DAYS: "730"
+      LOG_FILE_COMPRESS: "true"
+    volumes:
+      - ./logs:/var/log/livid-bot
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   autoheal:
     image: willfarrell/autoheal:latest

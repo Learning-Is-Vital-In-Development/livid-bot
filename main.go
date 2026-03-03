@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"log/slog"
 	"os"
 
@@ -11,7 +12,12 @@ import (
 )
 
 func main() {
-	logging.Configure()
+	_, logCloser, err := logging.Configure()
+	if err != nil {
+		log.Printf("failed to configure logging: %v", err)
+		os.Exit(1)
+	}
+	defer logCloser.Close()
 
 	token := requireEnv("DISCORD_BOT_TOKEN")
 	appID := requireEnv("DISCORD_APPLICATION_ID")
