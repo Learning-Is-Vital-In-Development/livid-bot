@@ -2,6 +2,10 @@
 
 LIVID Discord 서버에서 스터디 생성, 모집, 아카이브를 자동화하는 Go 기반 Discord 봇입니다.
 
+## Legal
+- [Terms of Service](./TERMS_OF_SERVICE.md)
+- [Privacy Policy](./PRIVACY_POLICY.md)
+
 ## 주요 기능
 - 스터디 생성: 분기(`YY-Q`) 기반 채널/역할 자동 생성
 - 스터디 모집: 분기 선택 후 해당 분기의 active 스터디만 모집 공지
