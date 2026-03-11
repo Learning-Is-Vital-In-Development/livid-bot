@@ -46,6 +46,7 @@ func main() {
 		MemberRepo:    db.NewMemberRepository(pool),
 		RecruitRepo:   db.NewRecruitRepository(pool),
 		AuditRepo:     db.NewCommandAuditRepository(pool),
+		ProposalRepo:  db.NewProposalRepository(pool),
 	}
 
 	if err := bot.Run(cfg); err != nil {
