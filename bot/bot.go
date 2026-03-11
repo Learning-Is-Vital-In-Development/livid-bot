@@ -18,6 +18,7 @@ type Config struct {
 	MemberRepo    *db.MemberRepository
 	RecruitRepo   *db.RecruitRepository
 	AuditRepo     CommandAuditStore
+	ProposalRepo  *db.ProposalRepository
 }
 
 func Run(cfg Config) error {
@@ -47,6 +48,9 @@ func Run(cfg Config) error {
 		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 		"study-start":   newStudyStartHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
+		"제안시작":         newProposeStartHandler(cfg.ProposalRepo),
+		"제안":           newProposeHandler(cfg.ProposalRepo),
+		"투표":           newVoteHandler(cfg.ProposalRepo),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelpAutocomplete,
@@ -72,6 +76,18 @@ func Run(cfg Config) error {
 			logCommand(i, "dispatch", "received autocomplete interaction")
 			if h, ok := autocompleteHandlers[commandName]; ok {
 				h(s, i)
+			}
+		case discordgo.InteractionModalSubmit:
+			customID := i.ModalSubmitData().CustomID
+			switch customID {
+			case "propose_modal":
+				newProposeModalHandler(cfg.ProposalRepo)(s, i)
+			}
+		case discordgo.InteractionMessageComponent:
+			customID := i.MessageComponentData().CustomID
+			switch customID {
+			case "vote_select":
+				newVoteSelectHandler(cfg.ProposalRepo)(s, i)
 			}
 		}
 	})
