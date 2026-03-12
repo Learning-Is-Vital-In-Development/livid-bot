@@ -7,38 +7,38 @@ import (
 	"time"
 )
 
-func TestParseProposalDeadlineUsesKSTEndOfDay(t *testing.T) {
-	now := time.Date(2026, 3, 12, 9, 0, 0, 0, proposalDeadlineLocation)
+func TestParseSuggestionDeadlineUsesKSTEndOfDay(t *testing.T) {
+	now := time.Date(2026, 3, 12, 9, 0, 0, 0, suggestionDeadlineLocation)
 
-	got, err := parseProposalDeadline("2026-03-13", now)
+	got, err := parseSuggestionDeadline("2026-03-13", now)
 	if err != nil {
 		t.Fatalf("expected deadline parse to succeed, got error: %v", err)
 	}
 
-	if got.Location().String() != proposalDeadlineLocation.String() {
-		t.Fatalf("expected location %q, got %q", proposalDeadlineLocation, got.Location())
+	if got.Location().String() != suggestionDeadlineLocation.String() {
+		t.Fatalf("expected location %q, got %q", suggestionDeadlineLocation, got.Location())
 	}
 	if got.Hour() != 23 || got.Minute() != 59 || got.Second() != 59 {
 		t.Fatalf("expected end-of-day deadline, got %s", got)
 	}
-	if proposalDateLabel(got) != "2026-03-13" {
-		t.Fatalf("expected formatted label 2026-03-13, got %q", proposalDateLabel(got))
+	if suggestionDateLabel(got) != "2026-03-13" {
+		t.Fatalf("expected formatted label 2026-03-13, got %q", suggestionDateLabel(got))
 	}
 }
 
-func TestParseProposalDeadlineRejectsPastOrElapsedDate(t *testing.T) {
-	now := time.Date(2026, 3, 12, 23, 59, 59, 0, proposalDeadlineLocation)
+func TestParseSuggestionDeadlineRejectsPastOrElapsedDate(t *testing.T) {
+	now := time.Date(2026, 3, 12, 23, 59, 59, 0, suggestionDeadlineLocation)
 
-	if _, err := parseProposalDeadline("2026-03-12", now); !errors.Is(err, errProposalDeadlinePast) {
-		t.Fatalf("expected errProposalDeadlinePast for same-day elapsed deadline, got %v", err)
+	if _, err := parseSuggestionDeadline("2026-03-12", now); !errors.Is(err, errSuggestionDeadlinePast) {
+		t.Fatalf("expected errSuggestionDeadlinePast for same-day elapsed deadline, got %v", err)
 	}
-	if _, err := parseProposalDeadline("2026-03-11", now); !errors.Is(err, errProposalDeadlinePast) {
-		t.Fatalf("expected errProposalDeadlinePast for past deadline, got %v", err)
+	if _, err := parseSuggestionDeadline("2026-03-11", now); !errors.Is(err, errSuggestionDeadlinePast) {
+		t.Fatalf("expected errSuggestionDeadlinePast for past deadline, got %v", err)
 	}
 }
 
-func TestBuildProposalMessage(t *testing.T) {
-	withDescription := buildProposalMessage("Go 스터디", "동시성 중심", 2)
+func TestBuildSuggestionMessage(t *testing.T) {
+	withDescription := buildSuggestionMessage("Go 스터디", "동시성 중심", 2)
 	if !strings.Contains(withDescription, "**주제**: Go 스터디") {
 		t.Fatalf("expected title in message, got: %s", withDescription)
 	}
@@ -49,7 +49,7 @@ func TestBuildProposalMessage(t *testing.T) {
 		t.Fatalf("expected vote count in message, got: %s", withDescription)
 	}
 
-	withoutDescription := buildProposalMessage("Rust 스터디", "", 0)
+	withoutDescription := buildSuggestionMessage("Rust 스터디", "", 0)
 	if strings.Contains(withoutDescription, "설명:") {
 		t.Fatalf("did not expect description line for empty description, got: %s", withoutDescription)
 	}

@@ -11,14 +11,14 @@ import (
 )
 
 type Config struct {
-	BotToken      string
-	ApplicationID string
-	GuildID       string
-	StudyRepo     *db.StudyRepository
-	MemberRepo    *db.MemberRepository
-	RecruitRepo   *db.RecruitRepository
-	AuditRepo     CommandAuditStore
-	ProposalRepo  *db.ProposalRepository
+	BotToken       string
+	ApplicationID  string
+	GuildID        string
+	StudyRepo      *db.StudyRepository
+	MemberRepo     *db.MemberRepository
+	RecruitRepo    *db.RecruitRepository
+	AuditRepo      CommandAuditStore
+	SuggestionRepo *db.SuggestionRepository
 }
 
 func Run(cfg Config) error {
@@ -48,9 +48,9 @@ func Run(cfg Config) error {
 		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 		"study-start":   newStudyStartHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
-		"제안시작":         newProposeStartHandler(cfg.ProposalRepo),
-		"제안":           newProposeHandler(cfg.ProposalRepo),
-		"투표":           newVoteHandler(cfg.ProposalRepo),
+		"suggest-start": newSuggestStartHandler(cfg.SuggestionRepo),
+		"suggest":       newSuggestHandler(cfg.SuggestionRepo),
+		"vote":          newVoteHandler(cfg.SuggestionRepo),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelpAutocomplete,
@@ -80,14 +80,14 @@ func Run(cfg Config) error {
 		case discordgo.InteractionModalSubmit:
 			customID := i.ModalSubmitData().CustomID
 			switch customID {
-			case "propose_modal":
-				newProposeModalHandler(cfg.ProposalRepo)(s, i)
+			case "suggest_modal":
+				newSuggestModalHandler(cfg.SuggestionRepo)(s, i)
 			}
 		case discordgo.InteractionMessageComponent:
 			customID := i.MessageComponentData().CustomID
 			switch customID {
 			case "vote_select":
-				newVoteSelectHandler(cfg.ProposalRepo)(s, i)
+				newVoteSelectHandler(cfg.SuggestionRepo)(s, i)
 			}
 		}
 	})

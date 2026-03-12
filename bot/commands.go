@@ -157,23 +157,23 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
-		Name:        "제안시작",
+		Name:        "suggest-start",
 		Description: "스터디 제안 기간을 시작합니다 (운영진 전용)",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "마감일",
+				Name:        "deadline",
 				Description: "제안 마감일 (YYYY-MM-DD)",
 				Required:    true,
 			},
 		},
 	},
 	{
-		Name:        "제안",
+		Name:        "suggest",
 		Description: "익명으로 스터디를 제안합니다",
 	},
 	{
-		Name:        "투표",
+		Name:        "vote",
 		Description: "스터디 제안에 투표합니다",
 	},
 }

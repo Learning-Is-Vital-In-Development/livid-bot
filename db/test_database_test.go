@@ -107,7 +107,7 @@ func sanitizeDatabaseName(name string) string {
 		}
 	}
 	if b.Len() == 0 {
-		return "proposal_test"
+		return "suggestion_test"
 	}
 	return b.String()
 }
