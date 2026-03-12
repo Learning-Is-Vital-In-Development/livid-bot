@@ -10,9 +10,9 @@ import (
 	"livid-bot/db"
 )
 
-func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "propose-start command received")
+		logCommand(i, "start", "suggest-start command received")
 
 		// Check 운영진 role
 		roles, err := s.GuildRoles(i.GuildID)
@@ -49,14 +49,14 @@ func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discord
 		options := i.ApplicationCommandData().Options
 		var closesAtStr string
 		for _, opt := range options {
-			if opt.Name == "마감일" {
+			if opt.Name == "deadline" {
 				closesAtStr = opt.StringValue()
 			}
 		}
-		closesAt, err := parseProposalDeadline(closesAtStr, time.Now())
+		closesAt, err := parseSuggestionDeadline(closesAtStr, time.Now())
 		switch {
 		case err == nil:
-		case errors.Is(err, errProposalDeadlinePast):
+		case errors.Is(err, errSuggestionDeadlinePast):
 			respondError(s, i, "마감일은 미래 날짜여야 합니다.")
 			return
 		default:
@@ -85,12 +85,12 @@ func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discord
 		}
 
 		// Create period
-		period, err := proposalRepo.CreatePeriod(ctx, targetChannelID, closesAt)
+		period, err := suggestionRepo.CreatePeriod(ctx, targetChannelID, closesAt)
 		if err != nil {
-			if errors.Is(err, db.ErrActiveProposalPeriodExists) {
-				existing, getErr := proposalRepo.GetActivePeriod(ctx)
+			if errors.Is(err, db.ErrActiveSuggestionPeriodExists) {
+				existing, getErr := suggestionRepo.GetActivePeriod(ctx)
 				if getErr == nil && existing != nil {
-					respondError(s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", proposalDateLabel(existing.ClosesAt)))
+					respondError(s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", suggestionDateLabel(existing.ClosesAt)))
 					return
 				}
 				respondError(s, i, "이미 활성 제안 기간이 있습니다.")
@@ -101,16 +101,16 @@ func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discord
 		}
 
 		// Post announcement
-		content := buildProposalAnnouncement(period.ClosesAt)
+		content := buildSuggestionAnnouncement(period.ClosesAt)
 		if _, err := s.ChannelMessageSend(targetChannelID, content); err != nil {
 			logCommand(i, "warn", "failed to send announcement: %v", err)
 		}
 
-		logCommand(i, "done", "proposal period created id=%d closes_at=%s", period.ID, proposalDateLabel(period.ClosesAt))
+		logCommand(i, "done", "suggestion period created id=%d closes_at=%s", period.ID, suggestionDateLabel(period.ClosesAt))
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("✅ 스터디 제안 기간이 시작되었습니다. 마감: %s", proposalDateLabel(period.ClosesAt)),
+				Content: fmt.Sprintf("✅ 스터디 제안 기간이 시작되었습니다. 마감: %s", suggestionDateLabel(period.ClosesAt)),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		}); err != nil {
@@ -119,12 +119,12 @@ func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discord
 	}
 }
 
-func newProposeHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newSuggestHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "propose command received")
+		logCommand(i, "start", "suggest command received")
 
 		ctx := context.Background()
-		period, err := proposalRepo.GetActivePeriod(ctx)
+		period, err := suggestionRepo.GetActivePeriod(ctx)
 		if err != nil {
 			respondError(s, i, "제안 기간 조회에 실패했습니다.")
 			return
@@ -137,7 +137,7 @@ func newProposeHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Se
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseModal,
 			Data: &discordgo.InteractionResponseData{
-				CustomID: "propose_modal",
+				CustomID: "suggest_modal",
 				Title:    "스터디 제안",
 				Components: []discordgo.MessageComponent{
 					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
@@ -166,12 +166,12 @@ func newProposeHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Se
 	}
 }
 
-func newProposeModalHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newSuggestModalHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "propose modal submit received")
+		logCommand(i, "start", "suggest modal submit received")
 
 		ctx := context.Background()
-		period, err := proposalRepo.GetActivePeriod(ctx)
+		period, err := suggestionRepo.GetActivePeriod(ctx)
 		if err != nil {
 			respondError(s, i, "제안 기간 조회에 실패했습니다.")
 			return
@@ -190,21 +190,21 @@ func newProposeModalHandler(proposalRepo *db.ProposalRepository) func(s *discord
 		description := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
 
 		targetChannelID := period.ChannelID
-		content := buildProposalMessage(title, description, 0)
+		content := buildSuggestionMessage(title, description, 0)
 
 		msg, err := s.ChannelMessageSend(targetChannelID, content)
 		if err != nil {
-			logCommand(i, "error", "failed to send proposal message: %v", err)
+			logCommand(i, "error", "failed to send suggestion message: %v", err)
 			respondError(s, i, "제안 메시지 게시에 실패했습니다.")
 			return
 		}
 
-		proposal, err := proposalRepo.CreateProposal(ctx, period.ID, title, description, msg.ID, targetChannelID)
+		suggestion, err := suggestionRepo.CreateSuggestion(ctx, period.ID, title, description, msg.ID, targetChannelID)
 		if err != nil {
 			if deleteErr := s.ChannelMessageDelete(targetChannelID, msg.ID); deleteErr != nil {
-				logCommand(i, "warn", "failed to delete proposal message after DB error: %v", deleteErr)
+				logCommand(i, "warn", "failed to delete suggestion message after DB error: %v", deleteErr)
 			}
-			if errors.Is(err, db.ErrProposalClosed) {
+			if errors.Is(err, db.ErrSuggestionClosed) {
 				respondError(s, i, "제안 기간이 마감되었습니다.")
 				return
 			}
@@ -216,7 +216,7 @@ func newProposeModalHandler(proposalRepo *db.ProposalRepository) func(s *discord
 			logCommand(i, "warn", "failed to add reaction: %v", err)
 		}
 
-		logCommand(i, "done", "proposal created id=%d", proposal.ID)
+		logCommand(i, "done", "suggestion created id=%d", suggestion.ID)
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{

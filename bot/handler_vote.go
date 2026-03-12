@@ -11,12 +11,12 @@ import (
 	"livid-bot/db"
 )
 
-func newVoteHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newVoteHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		logCommand(i, "start", "vote command received")
 
 		ctx := context.Background()
-		period, err := proposalRepo.GetActivePeriod(ctx)
+		period, err := suggestionRepo.GetActivePeriod(ctx)
 		if err != nil {
 			respondError(s, i, "제안 기간 조회에 실패했습니다.")
 			return
@@ -26,18 +26,18 @@ func newVoteHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Sessi
 			return
 		}
 
-		proposals, err := proposalRepo.ListProposals(ctx, period.ID)
+		suggestions, err := suggestionRepo.ListSuggestions(ctx, period.ID)
 		if err != nil {
 			respondError(s, i, "제안 목록 조회에 실패했습니다.")
 			return
 		}
-		if len(proposals) == 0 {
+		if len(suggestions) == 0 {
 			respondError(s, i, "등록된 제안이 없습니다.")
 			return
 		}
 
-		options := make([]discordgo.SelectMenuOption, 0, len(proposals))
-		for _, p := range proposals {
+		options := make([]discordgo.SelectMenuOption, 0, len(suggestions))
+		for _, p := range suggestions {
 			label := p.Title
 			if len(label) > 100 {
 				label = label[:100]
@@ -71,7 +71,7 @@ func newVoteHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Sessi
 	}
 }
 
-func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newVoteSelectHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		logCommand(i, "start", "vote select received")
 
@@ -80,7 +80,7 @@ func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo
 			respondError(s, i, "선택된 값이 없습니다.")
 			return
 		}
-		proposalID, err := strconv.ParseInt(data.Values[0], 10, 64)
+		suggestionID, err := strconv.ParseInt(data.Values[0], 10, 64)
 		if err != nil {
 			respondError(s, i, "잘못된 제안 ID입니다.")
 			return
@@ -96,12 +96,12 @@ func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo
 		}
 
 		ctx := context.Background()
-		result, err := proposalRepo.ToggleVote(ctx, proposalID, userID)
+		result, err := suggestionRepo.ToggleVote(ctx, suggestionID, userID)
 		if err != nil {
 			switch {
-			case errors.Is(err, db.ErrProposalClosed):
+			case errors.Is(err, db.ErrSuggestionClosed):
 				respondError(s, i, "이 제안은 더 이상 투표할 수 없습니다.")
-			case errors.Is(err, db.ErrProposalNotFound):
+			case errors.Is(err, db.ErrSuggestionNotFound):
 				respondError(s, i, "제안을 찾을 수 없습니다.")
 			default:
 				respondError(s, i, "투표 처리에 실패했습니다.")
@@ -116,16 +116,16 @@ func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo
 				oldContent := msg.Content
 				newContent := updateVoteLine(oldContent, result.VoteCount)
 				if _, editErr := s.ChannelMessageEdit(result.ChannelID, result.MessageID, newContent); editErr != nil {
-					logCommand(i, "warn", "failed to edit proposal message: %v", editErr)
+					logCommand(i, "warn", "failed to edit suggestion message: %v", editErr)
 				}
 			} else {
-				logCommand(i, "warn", "failed to fetch proposal message: %v", fetchErr)
+				logCommand(i, "warn", "failed to fetch suggestion message: %v", fetchErr)
 			}
 		}
 
 		// Auto-confirm at 3 votes
 		if result.JustConfirmed && result.ChannelID != "" {
-			confirmMsg := fmt.Sprintf("🎉 스터디 개설 확정!\n**%s** 이 %d표를 달성했습니다.\n운영자로 참여하실 분은 DM 또는 댓글로 알려주세요!", result.ProposalTitle, db.ProposalConfirmVoteThreshold)
+			confirmMsg := fmt.Sprintf("🎉 스터디 개설 확정!\n**%s** 이 %d표를 달성했습니다.\n운영자로 참여하실 분은 DM 또는 댓글로 알려주세요!", result.SuggestionTitle, db.SuggestionConfirmVoteThreshold)
 			if _, sendErr := s.ChannelMessageSend(result.ChannelID, confirmMsg); sendErr != nil {
 				logCommand(i, "warn", "failed to send confirm message: %v", sendErr)
 			}
@@ -136,7 +136,7 @@ func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo
 			responseMsg = "투표 취소!"
 		}
 
-		logCommand(i, "done", "vote toggled proposal=%d voted=%v count=%d", proposalID, result.Voted, result.VoteCount)
+		logCommand(i, "done", "vote toggled suggestion=%d voted=%v count=%d", suggestionID, result.Voted, result.VoteCount)
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
