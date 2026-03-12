@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     labels:
       autoheal: "true"
     environment:
@@ -20,6 +21,7 @@ services:
 
   bot:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
