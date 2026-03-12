@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -52,26 +53,18 @@ func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discord
 				closesAtStr = opt.StringValue()
 			}
 		}
-		closesAt, err := time.Parse("2006-01-02", closesAtStr)
-		if err != nil {
+		closesAt, err := parseProposalDeadline(closesAtStr, time.Now())
+		switch {
+		case err == nil:
+		case errors.Is(err, errProposalDeadlinePast):
+			respondError(s, i, "마감일은 미래 날짜여야 합니다.")
+			return
+		default:
 			respondError(s, i, fmt.Sprintf("마감일 형식이 올바르지 않습니다 (YYYY-MM-DD): %s", closesAtStr))
 			return
 		}
-		// Set to end of day in UTC
-		closesAt = time.Date(closesAt.Year(), closesAt.Month(), closesAt.Day(), 23, 59, 59, 0, time.UTC)
 
 		ctx := context.Background()
-
-		// Check for existing active period
-		existing, err := proposalRepo.GetActivePeriod(ctx)
-		if err != nil {
-			respondError(s, i, "활성 제안 기간 조회에 실패했습니다.")
-			return
-		}
-		if existing != nil {
-			respondError(s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", existing.ClosesAt.Format("2006-01-02")))
-			return
-		}
 
 		// Find 운영진-자유채팅 channel
 		channels, err := s.GuildChannels(i.GuildID)
@@ -94,21 +87,30 @@ func newProposeStartHandler(proposalRepo *db.ProposalRepository) func(s *discord
 		// Create period
 		period, err := proposalRepo.CreatePeriod(ctx, targetChannelID, closesAt)
 		if err != nil {
+			if errors.Is(err, db.ErrActiveProposalPeriodExists) {
+				existing, getErr := proposalRepo.GetActivePeriod(ctx)
+				if getErr == nil && existing != nil {
+					respondError(s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", proposalDateLabel(existing.ClosesAt)))
+					return
+				}
+				respondError(s, i, "이미 활성 제안 기간이 있습니다.")
+				return
+			}
 			respondError(s, i, "제안 기간 생성에 실패했습니다.")
 			return
 		}
 
 		// Post announcement
-		content := fmt.Sprintf("📣 스터디 제안을 받습니다!\n마감일: %s 까지\n/제안 으로 익명 주제를 제안해주세요.", period.ClosesAt.Format("2006-01-02"))
+		content := buildProposalAnnouncement(period.ClosesAt)
 		if _, err := s.ChannelMessageSend(targetChannelID, content); err != nil {
 			logCommand(i, "warn", "failed to send announcement: %v", err)
 		}
 
-		logCommand(i, "done", "proposal period created id=%d closes_at=%s", period.ID, period.ClosesAt.Format("2006-01-02"))
+		logCommand(i, "done", "proposal period created id=%d closes_at=%s", period.ID, proposalDateLabel(period.ClosesAt))
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("✅ 스터디 제안 기간이 시작되었습니다. 마감: %s", period.ClosesAt.Format("2006-01-02")),
+				Content: fmt.Sprintf("✅ 스터디 제안 기간이 시작되었습니다. 마감: %s", proposalDateLabel(period.ClosesAt)),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		}); err != nil {
@@ -129,10 +131,6 @@ func newProposeHandler(proposalRepo *db.ProposalRepository) func(s *discordgo.Se
 		}
 		if period == nil {
 			respondError(s, i, "현재 활성 제안 기간이 없습니다.")
-			return
-		}
-		if period.ClosesAt.Before(time.Now()) {
-			respondError(s, i, "제안 기간이 마감되었습니다.")
 			return
 		}
 
@@ -182,42 +180,17 @@ func newProposeModalHandler(proposalRepo *db.ProposalRepository) func(s *discord
 			respondError(s, i, "현재 활성 제안 기간이 없습니다.")
 			return
 		}
+		if period.ChannelID == "" {
+			respondError(s, i, "제안 채널 정보를 확인할 수 없습니다.")
+			return
+		}
 
 		data := i.ModalSubmitData()
 		title := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
 		description := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
 
-		proposal, err := proposalRepo.CreateProposal(ctx, period.ID, title, description)
-		if err != nil {
-			respondError(s, i, "제안 등록에 실패했습니다.")
-			return
-		}
-
-		// Find 운영진-자유채팅 channel
-		channels, err := s.GuildChannels(i.GuildID)
-		if err != nil {
-			respondError(s, i, "채널 목록 조회에 실패했습니다.")
-			return
-		}
-		var targetChannelID string
-		for _, ch := range channels {
-			if ch.Name == "운영진-자유채팅" {
-				targetChannelID = ch.ID
-				break
-			}
-		}
-		if targetChannelID == "" {
-			respondError(s, i, "운영진-자유채팅 채널을 찾을 수 없습니다.")
-			return
-		}
-
-		// Build message content
-		var content string
-		if description != "" {
-			content = fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s\n설명: %s\n\n🚀 0표", title, description)
-		} else {
-			content = fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s\n\n🚀 0표", title)
-		}
+		targetChannelID := period.ChannelID
+		content := buildProposalMessage(title, description, 0)
 
 		msg, err := s.ChannelMessageSend(targetChannelID, content)
 		if err != nil {
@@ -226,8 +199,17 @@ func newProposeModalHandler(proposalRepo *db.ProposalRepository) func(s *discord
 			return
 		}
 
-		if err := proposalRepo.UpdateProposalMessage(ctx, proposal.ID, msg.ID, targetChannelID); err != nil {
-			logCommand(i, "error", "failed to update proposal message ref: %v", err)
+		proposal, err := proposalRepo.CreateProposal(ctx, period.ID, title, description, msg.ID, targetChannelID)
+		if err != nil {
+			if deleteErr := s.ChannelMessageDelete(targetChannelID, msg.ID); deleteErr != nil {
+				logCommand(i, "warn", "failed to delete proposal message after DB error: %v", deleteErr)
+			}
+			if errors.Is(err, db.ErrProposalClosed) {
+				respondError(s, i, "제안 기간이 마감되었습니다.")
+				return
+			}
+			respondError(s, i, "제안 등록에 실패했습니다.")
+			return
 		}
 
 		if err := s.MessageReactionAdd(targetChannelID, msg.ID, "🚀"); err != nil {
