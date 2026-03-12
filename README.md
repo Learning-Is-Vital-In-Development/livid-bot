@@ -21,7 +21,7 @@ DISCORD_BOT_TOKEN=<YOUR_BOT_TOKEN>
 DISCORD_APPLICATION_ID=<YOUR_APPLICATION_ID>
 DISCORD_GUILD_ID=<YOUR_GUILD_ID>
 DATABASE_URL=postgres://livid:livid@localhost:15432/livid?sslmode=disable
-LOG_FORMAT=text   # text | json (default: text)
+LOG_FORMAT=json   # json | text (default: json)
 LOG_LEVEL=info    # debug | info | warn | error (default: info)
 LOG_FILE_ENABLED=false
 LOG_FILE_PATH=/var/log/livid-bot/bot.log
@@ -137,11 +137,16 @@ go test ./...
 go test ./... -cover
 ```
 
+GitHub Actions CI:
+- `lint`: `gofmt -l .`, `golangci-lint`
+- `test`: `go build ./...`, `go test -v ./...`, `go test -race ./db`
+- `coverage`: 전체 패키지 coverage 프로파일, 요약, HTML artifact 생성
+
 ## 로그
 `slog` 기반 구조화 로그를 출력합니다.
 
-- `LOG_FORMAT=text`(기본): 사람이 읽기 쉬운 key=value 형식
-- `LOG_FORMAT=json`: JSON 단일 라인 형식
+- `LOG_FORMAT=json`(기본): JSON 단일 라인 형식
+- `LOG_FORMAT=text`: 사람이 읽기 쉬운 key=value 형식
 - `LOG_LEVEL`로 최소 출력 레벨 제어
 - `LOG_FILE_ENABLED=true`면 로그를 파일에도 동시 저장합니다.
 - 파일 저장은 `lumberjack`(size 기반 rotation)으로 처리합니다.
@@ -161,9 +166,9 @@ Docker Compose 기본 설정(`docker-compose.yml`):
 - `docker compose down`으로 컨테이너를 삭제해도 `./logs`는 유지됩니다.
 
 예시:
-```text
-time=2026-03-02T10:00:00Z level=INFO msg="create-study requested branch=26-2 name=algo" cmd=create-study stage=start guild=... user=...
-time=2026-03-02T10:00:01Z level=INFO msg="created study branch=26-2 name=algo channel=... role=..." cmd=create-study stage=success guild=... user=...
+```json
+{"time":"2026-03-02T10:00:00Z","level":"INFO","msg":"create-study requested branch=26-2 name=algo","cmd":"create-study","stage":"start","guild":"...","user":"..."}
+{"time":"2026-03-02T10:00:01Z","level":"INFO","msg":"created study branch=26-2 name=algo channel=... role=...","cmd":"create-study","stage":"success","guild":"...","user":"..."}
 ```
 
 ## Command Audit

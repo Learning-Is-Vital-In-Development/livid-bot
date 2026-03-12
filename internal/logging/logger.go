@@ -107,10 +107,12 @@ func outputFromConfig(cfg Config, out io.Writer) (io.Writer, io.Closer, error) {
 
 func parseFormat(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case formatText:
+		return formatText
 	case formatJSON:
 		return formatJSON
 	default:
-		return formatText
+		return formatJSON
 	}
 }
 

@@ -17,7 +17,11 @@ func main() {
 		log.Printf("failed to configure logging: %v", err)
 		os.Exit(1)
 	}
-	defer logCloser.Close()
+	defer func() {
+		if err := logCloser.Close(); err != nil {
+			slog.Warn("failed to close logger", "error", err)
+		}
+	}()
 
 	token := requireEnv("DISCORD_BOT_TOKEN")
 	appID := requireEnv("DISCORD_APPLICATION_ID")
