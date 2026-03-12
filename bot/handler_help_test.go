@@ -9,14 +9,14 @@ import (
 
 func TestVisibleCommandsForMemberNonAdmin(t *testing.T) {
 	visible := visibleCommandsForMember(commands, 0, true)
-	if len(visible) != 5 {
-		t.Fatalf("expected 5 visible commands (/help, /members, /suggest-start, /suggest, /vote), got %d", len(visible))
+	if len(visible) != 4 {
+		t.Fatalf("expected 4 visible commands (/help, /members, /suggest, /vote), got %d", len(visible))
 	}
 	if visible[0].Name != "help" || visible[1].Name != "members" {
 		t.Fatalf("unexpected visible commands: %s, %s", visible[0].Name, visible[1].Name)
 	}
-	if visible[2].Name != "suggest-start" || visible[3].Name != "suggest" || visible[4].Name != "vote" {
-		t.Fatalf("unexpected visible commands: %s, %s, %s", visible[2].Name, visible[3].Name, visible[4].Name)
+	if visible[2].Name != "suggest" || visible[3].Name != "vote" {
+		t.Fatalf("unexpected visible commands: %s, %s", visible[2].Name, visible[3].Name)
 	}
 }
 

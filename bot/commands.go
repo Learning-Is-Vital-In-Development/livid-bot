@@ -157,8 +157,9 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
-		Name:        "suggest-start",
-		Description: "스터디 제안 기간을 시작합니다 (운영진 전용)",
+		Name:                     "suggest-start",
+		Description:              "스터디 제안 기간을 시작합니다 (운영진 전용)",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
