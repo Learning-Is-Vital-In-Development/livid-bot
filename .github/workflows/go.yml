@@ -17,6 +17,22 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: livid
+          POSTGRES_PASSWORD: livid
+          POSTGRES_DB: livid
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U livid -d livid"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://livid:livid@localhost:5432/livid?sslmode=disable
 
     steps:
       - name: Checkout

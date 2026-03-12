@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -95,25 +96,26 @@ func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo
 		}
 
 		ctx := context.Background()
-		voted, newCount, err := proposalRepo.ToggleVote(ctx, proposalID, userID)
+		result, err := proposalRepo.ToggleVote(ctx, proposalID, userID)
 		if err != nil {
-			respondError(s, i, "투표 처리에 실패했습니다.")
-			return
-		}
-
-		proposal, err := proposalRepo.GetProposal(ctx, proposalID)
-		if err != nil || proposal == nil {
-			respondError(s, i, "제안 조회에 실패했습니다.")
+			switch {
+			case errors.Is(err, db.ErrProposalClosed):
+				respondError(s, i, "이 제안은 더 이상 투표할 수 없습니다.")
+			case errors.Is(err, db.ErrProposalNotFound):
+				respondError(s, i, "제안을 찾을 수 없습니다.")
+			default:
+				respondError(s, i, "투표 처리에 실패했습니다.")
+			}
 			return
 		}
 
 		// Update the channel message vote count
-		if proposal.MessageID != "" && proposal.ChannelID != "" {
-			msg, fetchErr := s.ChannelMessage(proposal.ChannelID, proposal.MessageID)
+		if result.MessageID != "" && result.ChannelID != "" {
+			msg, fetchErr := s.ChannelMessage(result.ChannelID, result.MessageID)
 			if fetchErr == nil {
 				oldContent := msg.Content
-				newContent := updateVoteLine(oldContent, newCount)
-				if _, editErr := s.ChannelMessageEdit(proposal.ChannelID, proposal.MessageID, newContent); editErr != nil {
+				newContent := updateVoteLine(oldContent, result.VoteCount)
+				if _, editErr := s.ChannelMessageEdit(result.ChannelID, result.MessageID, newContent); editErr != nil {
 					logCommand(i, "warn", "failed to edit proposal message: %v", editErr)
 				}
 			} else {
@@ -122,23 +124,19 @@ func newVoteSelectHandler(proposalRepo *db.ProposalRepository) func(s *discordgo
 		}
 
 		// Auto-confirm at 3 votes
-		if voted && newCount >= 3 && !proposal.Confirmed {
-			if confirmErr := proposalRepo.MarkConfirmed(ctx, proposalID); confirmErr != nil {
-				logCommand(i, "error", "failed to mark confirmed: %v", confirmErr)
-			} else if proposal.ChannelID != "" {
-				confirmMsg := fmt.Sprintf("🎉 스터디 개설 확정!\n**%s** 이 3표를 달성했습니다.\n운영자로 참여하실 분은 DM 또는 댓글로 알려주세요!", proposal.Title)
-				if _, sendErr := s.ChannelMessageSend(proposal.ChannelID, confirmMsg); sendErr != nil {
-					logCommand(i, "warn", "failed to send confirm message: %v", sendErr)
-				}
+		if result.JustConfirmed && result.ChannelID != "" {
+			confirmMsg := fmt.Sprintf("🎉 스터디 개설 확정!\n**%s** 이 %d표를 달성했습니다.\n운영자로 참여하실 분은 DM 또는 댓글로 알려주세요!", result.ProposalTitle, db.ProposalConfirmVoteThreshold)
+			if _, sendErr := s.ChannelMessageSend(result.ChannelID, confirmMsg); sendErr != nil {
+				logCommand(i, "warn", "failed to send confirm message: %v", sendErr)
 			}
 		}
 
 		responseMsg := "투표 완료!"
-		if !voted {
+		if !result.Voted {
 			responseMsg = "투표 취소!"
 		}
 
-		logCommand(i, "done", "vote toggled proposal=%d voted=%v count=%d", proposalID, voted, newCount)
+		logCommand(i, "done", "vote toggled proposal=%d voted=%v count=%d", proposalID, result.Voted, result.VoteCount)
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
