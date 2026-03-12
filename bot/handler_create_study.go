@@ -38,15 +38,24 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 
 		guildID := i.GuildID
 
-		categoryID, err := ensureCategoryID(s, guildID, "active")
+		categoryID, channels, err := ensureCategoryID(s, guildID, "active")
 		if err != nil {
 			slog.Error("failed to ensure active category", "guild_id", guildID, "error", err)
 			respondError(s, i, "Failed to prepare active category.")
 			return
 		}
 
-		// Create Discord channel
+		// Check for duplicate channel name
 		channelName := buildStudyChannelName(branch, name)
+		for _, ch := range channels {
+			if ch.Type == discordgo.ChannelTypeGuildText && ch.Name == channelName {
+				logCommand(i, "duplicate", "channel already exists name=%s channel=%s", channelName, ch.ID)
+				respondError(s, i, fmt.Sprintf("Channel **%s** already exists: <#%s>", channelName, ch.ID))
+				return
+			}
+		}
+
+		// Create Discord channel
 		channel, err := s.GuildChannelCreateComplex(guildID, discordgo.GuildChannelCreateData{
 			Name:     channelName,
 			Type:     discordgo.ChannelTypeGuildText,
@@ -103,15 +112,15 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sess
 	}
 }
 
-func ensureCategoryID(s *discordgo.Session, guildID, categoryName string) (string, error) {
+func ensureCategoryID(s *discordgo.Session, guildID, categoryName string) (string, []*discordgo.Channel, error) {
 	channels, err := s.GuildChannels(guildID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	for _, ch := range channels {
 		if ch.Type == discordgo.ChannelTypeGuildCategory && strings.EqualFold(ch.Name, categoryName) {
-			return ch.ID, nil
+			return ch.ID, channels, nil
 		}
 	}
 
@@ -123,15 +132,15 @@ func ensureCategoryID(s *discordgo.Session, guildID, categoryName string) (strin
 		// Re-fetch in case another goroutine created it concurrently
 		channels, refetchErr := s.GuildChannels(guildID)
 		if refetchErr != nil {
-			return "", err
+			return "", nil, err
 		}
 		for _, ch := range channels {
 			if ch.Type == discordgo.ChannelTypeGuildCategory && strings.EqualFold(ch.Name, categoryName) {
-				return ch.ID, nil
+				return ch.ID, channels, nil
 			}
 		}
-		return "", err
+		return "", nil, err
 	}
 
-	return category.ID, nil
+	return category.ID, channels, nil
 }
