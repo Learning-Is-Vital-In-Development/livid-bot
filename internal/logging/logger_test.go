@@ -15,8 +15,8 @@ import (
 func TestConfigFromEnvDefaults(t *testing.T) {
 	cfg := configFromEnv(func(string) string { return "" })
 
-	if cfg.Format != formatText {
-		t.Fatalf("expected default format %q, got %q", formatText, cfg.Format)
+	if cfg.Format != formatJSON {
+		t.Fatalf("expected default format %q, got %q", formatJSON, cfg.Format)
 	}
 	if cfg.Level != slog.LevelInfo {
 		t.Fatalf("expected default level info, got %v", cfg.Level)
@@ -91,6 +91,19 @@ func TestConfigFromEnvCustom(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvExplicitTextFormat(t *testing.T) {
+	cfg := configFromEnv(func(key string) string {
+		if key == "LOG_FORMAT" {
+			return "text"
+		}
+		return ""
+	})
+
+	if cfg.Format != formatText {
+		t.Fatalf("expected explicit format %q, got %q", formatText, cfg.Format)
+	}
+}
+
 func TestConfigFromEnvInvalidFallback(t *testing.T) {
 	cfg := configFromEnv(func(key string) string {
 		switch key {
@@ -115,8 +128,8 @@ func TestConfigFromEnvInvalidFallback(t *testing.T) {
 		}
 	})
 
-	if cfg.Format != formatText {
-		t.Fatalf("expected invalid format fallback to %q, got %q", formatText, cfg.Format)
+	if cfg.Format != formatJSON {
+		t.Fatalf("expected invalid format fallback to %q, got %q", formatJSON, cfg.Format)
 	}
 	if cfg.Level != slog.LevelInfo {
 		t.Fatalf("expected invalid level fallback to info, got %v", cfg.Level)
@@ -189,7 +202,11 @@ func TestOutputFromConfigEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	defer closer.Close()
+	defer func() {
+		if err := closer.Close(); err != nil {
+			t.Fatalf("expected Close() to return nil, got %v", err)
+		}
+	}()
 
 	if _, err := writer.Write([]byte("hello world\n")); err != nil {
 		t.Fatalf("write failed: %v", err)

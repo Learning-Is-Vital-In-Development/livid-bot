@@ -15,7 +15,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Modules
+        run: go mod download
+
+      - name: Check Formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: GolangCI-Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.11.1
+          args: --timeout=5m ./...
+
+  test:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -50,8 +81,64 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-      - name: Vet
-        run: go vet ./...
-
       - name: Test
         run: go test -v ./...
+
+      - name: Race Test DB
+        run: go test -race ./db
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: livid
+          POSTGRES_PASSWORD: livid
+          POSTGRES_DB: livid
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U livid -d livid"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://livid:livid@localhost:5432/livid?sslmode=disable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Modules
+        run: go mod download
+
+      - name: Generate Coverage Profile
+        run: go test -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Generate Coverage Reports
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          go tool cover -html=coverage.out -o coverage.html
+          total=$(awk '/^total:/ {print $3}' coverage.txt)
+          {
+            echo "## Coverage"
+            echo
+            echo "Total coverage: \`$total\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Coverage Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.txt
+            coverage.html

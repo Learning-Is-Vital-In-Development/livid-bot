@@ -191,7 +191,8 @@ func (r *SuggestionRepository) ToggleVote(ctx context.Context, suggestionID int6
 		suggestionID, userID,
 	).Scan(&existing)
 
-	if scanErr == pgx.ErrNoRows {
+	switch scanErr {
+	case pgx.ErrNoRows:
 		// Insert vote
 		_, err = tx.Exec(ctx,
 			`INSERT INTO study_suggestion_votes (suggestion_id, user_id) VALUES ($1, $2)`,
@@ -201,7 +202,7 @@ func (r *SuggestionRepository) ToggleVote(ctx context.Context, suggestionID int6
 			return nil, fmt.Errorf("insert vote: %w", err)
 		}
 		result.Voted = true
-	} else if scanErr == nil {
+	case nil:
 		// Delete vote
 		_, err = tx.Exec(ctx,
 			`DELETE FROM study_suggestion_votes WHERE suggestion_id = $1 AND user_id = $2`,
@@ -211,7 +212,7 @@ func (r *SuggestionRepository) ToggleVote(ctx context.Context, suggestionID int6
 			return nil, fmt.Errorf("delete vote: %w", err)
 		}
 		result.Voted = false
-	} else {
+	default:
 		return nil, fmt.Errorf("check existing vote: %w", scanErr)
 	}
 
