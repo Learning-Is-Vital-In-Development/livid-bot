@@ -139,12 +139,23 @@ func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.Me
 		return
 	}
 
+	member, err := s.GuildMember(r.GuildID, r.UserID)
+	if err != nil {
+		slog.Error("failed to get member info", "guild_id", r.GuildID, "user_id", r.UserID, "error", err)
+		return
+	}
+
+	username := member.User.Username
+	if member.Nick != "" {
+		username = member.Nick
+	}
+
 	ctx := context.Background()
 	if err := h.memberRepo.RemoveMember(ctx, info.StudyID, r.UserID); err != nil {
 		slog.Error("failed to record member leave", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
 	}
 
-	slog.Info("user left study", "user_id", r.UserID, "study_id", info.StudyID)
+	slog.Info("user left study", "username", username, "user_id", r.UserID, "study_id", info.StudyID)
 }
 
 func (h *ReactionHandler) lookup(messageID, emoji string) (emojiStudyInfo, bool) {
