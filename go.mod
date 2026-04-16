@@ -1,10 +1,10 @@
 module livid-bot
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
