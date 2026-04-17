@@ -51,16 +51,18 @@ docker compose up --build
 
 > 앱 시작 시 DB 마이그레이션이 자동 실행됩니다.
 
-### 3) k3s 배포
-`deploy/k3s/` 아래에 Helm chart와 컷오버 스크립트가 준비되어 있습니다.
+### 3) Kubernetes 배포
+운영용 Helm chart와 컷오버 스크립트는 `~/projects/infrastructure`가 소유합니다.
 
 ```bash
-./deploy/k3s/bin/apply-secrets.sh
-./deploy/k3s/bin/deploy.sh
+cd /Users/haril/projects/infrastructure
+mise run livid-bot:image-build
+mise run livid-bot:apply-secrets
+mise run livid-bot:deploy
 ```
 
-데이터를 유지한 채 Docker Compose에서 k3s로 넘길 때는
-`./deploy/k3s/bin/cutover.sh`를 사용합니다.
+데이터를 유지한 채 Docker Compose에서 Kubernetes로 넘길 때는
+`mise run livid-bot:cutover`를 사용합니다.
 
 ## 슬래시 명령어
 

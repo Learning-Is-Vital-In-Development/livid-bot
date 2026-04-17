@@ -4,15 +4,3 @@ golangci-lint = "latest"
 
 [env]
 _.file = ".env"
-
-[tasks.apply-secrets]
-description = "Apply livid-bot runtime secrets to Kubernetes"
-run = "./deploy/k3s/bin/apply-secrets.sh"
-
-[tasks.deploy-k3s]
-description = "Deploy or update livid-bot on k3s"
-run = "./deploy/k3s/bin/deploy.sh"
-
-[tasks.cutover-k3s]
-description = "Migrate livid-bot data from Docker Compose to k3s"
-run = "./deploy/k3s/bin/cutover.sh"
