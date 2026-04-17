@@ -27,5 +27,6 @@ livid-bot
 .mise.toml
 .jj
 logs/
+deploy/k3s/output/
 
 .claude/settings.local.json
