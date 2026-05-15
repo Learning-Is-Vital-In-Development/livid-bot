@@ -130,6 +130,40 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
+		Name:                     "voice-stats",
+		Description:              "음성채널 출석/체류 시간 통계를 조회합니다",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionChannel,
+				Name:        "channel",
+				Description: "통계를 조회할 음성채널",
+				Required:    true,
+				ChannelTypes: []discordgo.ChannelType{
+					discordgo.ChannelTypeGuildVoice,
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "from",
+				Description: "집계 시작일 (YYYY-MM-DD, KST)",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "to",
+				Description: "집계 종료일 (YYYY-MM-DD, KST, 포함, 생략 시 오늘)",
+				Required:    false,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionInteger,
+				Name:        "limit",
+				Description: "표시할 최대 인원 수 (기본 20, 최대 25)",
+				Required:    false,
+			},
+		},
+	},
+	{
 		Name:                     "study-start",
 		Description:              "Close recruitment and start studies for a branch",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),

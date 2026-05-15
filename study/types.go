@@ -34,3 +34,17 @@ type RecruitMapping struct {
 	StudyID          int64
 	RoleID           string
 }
+
+type VoiceChannelSession struct {
+	JoinedAt        time.Time
+	LeftAt          time.Time
+	DurationSeconds int64
+	IsOpen          bool
+}
+
+type VoiceChannelStat struct {
+	UserID       string
+	SessionCount int64
+	TotalSeconds int64
+	Sessions     []VoiceChannelSession
+}

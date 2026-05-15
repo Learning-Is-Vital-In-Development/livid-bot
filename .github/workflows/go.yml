@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+# The deploy job needs GHCR write access, but only on trusted pushes to main.
+# Repository contents stay read-only for this public app repo.
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -142,3 +145,131 @@ jobs:
             coverage.out
             coverage.txt
             coverage.html
+
+  publish-and-update-gitops:
+    name: Publish image and update GitOps
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      INFRA_REPO: songkg7/infrastructure
+      INFRA_VALUES_FILE: deploy/k8s/apps/livid-bot/chart/values.yaml
+
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+
+      - name: Derive image metadata
+        id: image
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          tag="${GITHUB_SHA::12}"
+          echo "repository=ghcr.io/${owner}/livid-bot" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.repository }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.repository }}:main
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Require infrastructure write token
+        env:
+          INFRA_REPO_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${INFRA_REPO_TOKEN}" ]; then
+            echo "::error::Missing INFRA_REPO_TOKEN secret with contents:write access to ${INFRA_REPO}."
+            exit 1
+          fi
+
+      - name: Checkout infrastructure
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.INFRA_REPO }}
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+          path: infrastructure
+
+      - name: Update livid-bot image tag in GitOps repo
+        working-directory: infrastructure
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["INFRA_VALUES_FILE"])
+          repository = os.environ["IMAGE_REPOSITORY"]
+          tag = os.environ["IMAGE_TAG"]
+          lines = path.read_text().splitlines()
+          in_image = False
+          saw_repository = False
+          saw_tag = False
+
+          for idx, line in enumerate(lines):
+              if line == "image:":
+                  in_image = True
+                  continue
+              if in_image and line and not line.startswith(" "):
+                  in_image = False
+              if not in_image:
+                  continue
+              stripped = line.strip()
+              if stripped.startswith("repository:"):
+                  lines[idx] = f"  repository: {repository}"
+                  saw_repository = True
+              elif stripped.startswith("tag:"):
+                  lines[idx] = f'  tag: "{tag}"'
+                  saw_tag = True
+
+          if not (saw_repository and saw_tag):
+              raise SystemExit(f"failed to update repository/tag in {path}")
+          path.write_text("\n".join(lines) + "\n")
+          PY
+
+      - name: Commit and push GitOps image bump
+        working-directory: infrastructure
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- "${INFRA_VALUES_FILE}"; then
+            echo "GitOps values already point at ${IMAGE_TAG}; nothing to commit."
+            exit 0
+          fi
+
+          git diff --check -- "${INFRA_VALUES_FILE}"
+          git add "${INFRA_VALUES_FILE}"
+          git commit -m "deploy(livid-bot): ${IMAGE_TAG}"
+          git pull --rebase origin main
+          git push origin HEAD:main
