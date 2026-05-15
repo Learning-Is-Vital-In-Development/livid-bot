@@ -53,13 +53,24 @@ docker compose up --build
 > 앱 시작 시 DB 마이그레이션이 자동 실행됩니다.
 
 ### 3) Kubernetes 배포
-운영용 Helm chart와 컷오버 스크립트는 `~/projects/infrastructure`가 소유합니다.
+운영용 Helm chart와 Argo CD Application은 `~/projects/infrastructure`가 소유합니다.
+
+일반 배포 경로는 `main` push입니다.
+
+```text
+livid-bot main push
+→ GitHub Actions lint/test
+→ GHCR image publish
+→ infrastructure repo image tag bump
+→ Argo CD auto-sync
+```
+
+최초 온보딩/복구 시에는 infrastructure repo에서 Argo CD Application과 runtime secret을 적용합니다.
 
 ```bash
 cd /Users/haril/projects/infrastructure
-mise run livid-bot:image-build
+mise run cluster:argocd:apply-apps
 mise run livid-bot:apply-secrets
-mise run livid-bot:deploy
 ```
 
 데이터를 유지한 채 Docker Compose에서 Kubernetes로 넘길 때는
@@ -167,6 +178,7 @@ GitHub Actions CI:
 - `lint`: `gofmt -l .`, `golangci-lint`
 - `test`: `go build ./...`, `go test -v ./...`, `go test -race ./db`
 - `coverage`: 전체 패키지 coverage 프로파일, 요약, HTML artifact 생성
+- `publish-and-update-gitops`: `main` push에서 GHCR image를 publish하고 `songkg7/infrastructure`의 livid-bot image tag를 bump합니다. `INFRA_REPO_TOKEN` secret이 필요합니다.
 
 ## 로그
 `slog` 기반 구조화 로그를 출력합니다.
