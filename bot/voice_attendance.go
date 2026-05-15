@@ -105,16 +105,20 @@ func newVoiceStatsHandler(repo VoiceSessionStore) func(s *discordgo.Session, i *
 		channelOpt := data.GetOption("channel")
 		fromOpt := data.GetOption("from")
 		toOpt := data.GetOption("to")
-		if channelOpt == nil || fromOpt == nil || toOpt == nil {
-			respondError(s, i, "channel, from, to 옵션은 필수입니다.")
+		if channelOpt == nil || fromOpt == nil {
+			respondError(s, i, "channel, from 옵션은 필수입니다.")
 			return
 		}
 
 		channel := channelOpt.ChannelValue(s)
 		channelID := channel.ID
-		from, to, err := parseVoiceStatsDateRange(fromOpt.StringValue(), toOpt.StringValue(), voiceStatsLocation())
+		toRaw := ""
+		if toOpt != nil {
+			toRaw = toOpt.StringValue()
+		}
+		from, to, err := parseVoiceStatsDateRangeWithDefault(fromOpt.StringValue(), toRaw, time.Now(), voiceStatsLocation())
 		if err != nil {
-			respondError(s, i, "날짜 형식이 올바르지 않습니다. from/to는 YYYY-MM-DD 형식이며 to는 from 이후여야 합니다.")
+			respondError(s, i, "날짜 형식이 올바르지 않습니다. from/to는 YYYY-MM-DD 형식이며 to는 from 이후여야 합니다. to 생략 시 오늘(KST)로 처리됩니다.")
 			return
 		}
 		limit := voiceStatsLimitFromOption(data.GetOption("limit"))
@@ -146,6 +150,10 @@ func newVoiceStatsHandler(repo VoiceSessionStore) func(s *discordgo.Session, i *
 }
 
 func parseVoiceStatsDateRange(fromRaw, toRaw string, loc *time.Location) (time.Time, time.Time, error) {
+	return parseVoiceStatsDateRangeWithDefault(fromRaw, toRaw, time.Time{}, loc)
+}
+
+func parseVoiceStatsDateRangeWithDefault(fromRaw, toRaw string, now time.Time, loc *time.Location) (time.Time, time.Time, error) {
 	if loc == nil {
 		loc = time.Local
 	}
@@ -153,7 +161,15 @@ func parseVoiceStatsDateRange(fromRaw, toRaw string, loc *time.Location) (time.T
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("%w: parse from: %w", errInvalidVoiceStatsDateRange, err)
 	}
-	toInclusive, err := time.ParseInLocation(voiceStatsDateLayout, strings.TrimSpace(toRaw), loc)
+
+	toRaw = strings.TrimSpace(toRaw)
+	if toRaw == "" {
+		if now.IsZero() {
+			now = time.Now()
+		}
+		toRaw = now.In(loc).Format(voiceStatsDateLayout)
+	}
+	toInclusive, err := time.ParseInLocation(voiceStatsDateLayout, toRaw, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("%w: parse to: %w", errInvalidVoiceStatsDateRange, err)
 	}

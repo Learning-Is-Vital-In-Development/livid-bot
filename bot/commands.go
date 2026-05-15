@@ -152,8 +152,8 @@ var commands = []*discordgo.ApplicationCommand{
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        "to",
-				Description: "집계 종료일 (YYYY-MM-DD, KST, 포함)",
-				Required:    true,
+				Description: "집계 종료일 (YYYY-MM-DD, KST, 포함, 생략 시 오늘)",
+				Required:    false,
 			},
 			{
 				Type:        discordgo.ApplicationCommandOptionInteger,

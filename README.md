@@ -87,7 +87,7 @@ mise run livid-bot:deploy
 - 옵션
   - `channel` (voice channel, required)
   - `from` (string, required, `YYYY-MM-DD`, KST)
-  - `to` (string, required, `YYYY-MM-DD`, KST, 포함)
+  - `to` (string, optional, `YYYY-MM-DD`, KST, 포함, 생략 시 오늘)
   - `limit` (integer, optional, default 20, max 25)
 - 동작
   - 지정한 음성채널의 기간별 출석/체류 시간 통계를 표시 (ephemeral)

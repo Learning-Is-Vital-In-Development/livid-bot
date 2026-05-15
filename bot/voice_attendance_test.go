@@ -78,6 +78,22 @@ func TestParseVoiceStatsDateRangeUsesInclusiveEndDate(t *testing.T) {
 	}
 }
 
+func TestParseVoiceStatsDateRangeDefaultsEmptyToToday(t *testing.T) {
+	loc := time.FixedZone("KST", 9*60*60)
+	now := time.Date(2026, 5, 16, 13, 30, 0, 0, loc)
+
+	from, to, err := parseVoiceStatsDateRangeWithDefault("2026-05-01", "", now, loc)
+	if err != nil {
+		t.Fatalf("parse date range with default to: %v", err)
+	}
+	if !from.Equal(time.Date(2026, 5, 1, 0, 0, 0, 0, loc)) {
+		t.Fatalf("unexpected from: %s", from)
+	}
+	if !to.Equal(time.Date(2026, 5, 17, 0, 0, 0, 0, loc)) {
+		t.Fatalf("expected default to to include today's KST date, got: %s", to)
+	}
+}
+
 func TestBuildVoiceStatsResponseUsesDisplayNamesWithoutUserIDs(t *testing.T) {
 	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)
@@ -137,6 +153,13 @@ func TestVoiceStatsCommandIsAdminOnly(t *testing.T) {
 	}
 	if len(channelOption.ChannelTypes) != 1 || channelOption.ChannelTypes[0] != discordgo.ChannelTypeGuildVoice {
 		t.Fatalf("expected channel option to allow only guild voice channels, got %+v", channelOption.ChannelTypes)
+	}
+	toOption := findCommandOptionForTest(cmd, "to")
+	if toOption == nil {
+		t.Fatal("expected voice-stats to option")
+	}
+	if toOption.Required {
+		t.Fatal("expected voice-stats to option to be optional so it can default to today")
 	}
 }
 
