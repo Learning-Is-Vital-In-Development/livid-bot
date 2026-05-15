@@ -34,3 +34,9 @@ type RecruitMapping struct {
 	StudyID          int64
 	RoleID           string
 }
+
+type VoiceChannelStat struct {
+	UserID       string
+	SessionCount int64
+	TotalSeconds int64
+}

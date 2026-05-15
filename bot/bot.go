@@ -1,10 +1,12 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
@@ -19,6 +21,7 @@ type Config struct {
 	RecruitRepo    *db.RecruitRepository
 	AuditRepo      CommandAuditStore
 	SuggestionRepo *db.SuggestionRepository
+	VoiceRepo      VoiceSessionStore
 }
 
 func Run(cfg Config) error {
@@ -29,9 +32,16 @@ func Run(cfg Config) error {
 		return fmt.Errorf("create discord session: %w", err)
 	}
 
-	discord.Identify.Intents = discordgo.IntentsGuilds |
-		discordgo.IntentsGuildMessages |
-		discordgo.IntentsGuildMessageReactions
+	configureDiscordSession(discord)
+
+	if cfg.VoiceRepo != nil {
+		closed, err := cfg.VoiceRepo.CloseOpenSessions(context.Background(), time.Now().UTC(), "bot_restart")
+		if err != nil {
+			slog.Warn("failed to close stale voice sessions on startup", "error", err)
+		} else if closed > 0 {
+			slog.Info("closed stale voice sessions on startup", "count", closed)
+		}
+	}
 
 	// Initialize reaction handler and load existing mappings from DB
 	reactionHandler := NewReactionHandler(cfg.MemberRepo)
@@ -51,6 +61,7 @@ func Run(cfg Config) error {
 		"suggest-start": newSuggestStartHandler(cfg.SuggestionRepo),
 		"suggest":       newSuggestHandler(cfg.SuggestionRepo),
 		"vote":          newVoteHandler(cfg.SuggestionRepo),
+		"voice-stats":   newVoiceStatsHandler(cfg.VoiceRepo),
 	}
 	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelpAutocomplete,
@@ -94,6 +105,7 @@ func Run(cfg Config) error {
 
 	discord.AddHandler(reactionHandler.OnReactionAdd)
 	discord.AddHandler(reactionHandler.OnReactionRemove)
+	discord.AddHandler(newVoiceStateHandler(cfg.VoiceRepo, cfg.GuildID))
 
 	if err := discord.Open(); err != nil {
 		return fmt.Errorf("open discord session: %w", err)
@@ -114,4 +126,19 @@ func Run(cfg Config) error {
 	<-c
 
 	return nil
+}
+
+func configureDiscordSession(discord *discordgo.Session) {
+	if discord == nil {
+		return
+	}
+	// discordgo runs handlers in separate goroutines by default. Voice session
+	// logging depends on receiving a user's VoiceStateUpdate events in gateway
+	// order, so keep dispatch synchronous and rely on the DB advisory lock for
+	// per-user write serialization.
+	discord.SyncEvents = true
+	discord.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsGuildMessageReactions |
+		discordgo.IntentsGuildVoiceStates
 }
