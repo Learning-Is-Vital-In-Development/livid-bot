@@ -61,6 +61,48 @@ func TestVoiceSessionRepositoryRecordsTransitionsAndStats(t *testing.T) {
 	}
 }
 
+func TestVoiceSessionRepositoryListChannelStatsIncludesClippedSessionDetails(t *testing.T) {
+	td := newTestDatabase(t)
+	repo := NewVoiceSessionRepository(td.Pool)
+	ctx := context.Background()
+	base := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+
+	if err := repo.RecordVoiceTransition(ctx, "guild-1", "user-1", "", "voice-1", base.Add(-15*time.Minute)); err != nil {
+		t.Fatalf("record first join: %v", err)
+	}
+	if err := repo.RecordVoiceTransition(ctx, "guild-1", "user-1", "voice-1", "", base.Add(15*time.Minute)); err != nil {
+		t.Fatalf("record first leave: %v", err)
+	}
+	if err := repo.RecordVoiceTransition(ctx, "guild-1", "user-1", "", "voice-1", base.Add(30*time.Minute)); err != nil {
+		t.Fatalf("record second join: %v", err)
+	}
+	if err := repo.RecordVoiceTransition(ctx, "guild-1", "user-1", "voice-1", "", base.Add(75*time.Minute)); err != nil {
+		t.Fatalf("record second leave: %v", err)
+	}
+
+	stats, err := repo.ListChannelStats(ctx, "guild-1", "voice-1", base, base.Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("list stats: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected one stats row, got %d: %+v", len(stats), stats)
+	}
+	if stats[0].SessionCount != 2 || stats[0].TotalSeconds != int64(45*time.Minute/time.Second) {
+		t.Fatalf("unexpected aggregate stats: %+v", stats[0])
+	}
+	if len(stats[0].Sessions) != 2 {
+		t.Fatalf("expected two detailed sessions, got %d: %+v", len(stats[0].Sessions), stats[0].Sessions)
+	}
+	first := stats[0].Sessions[0]
+	if !first.JoinedAt.Equal(base) || !first.LeftAt.Equal(base.Add(15*time.Minute)) || first.DurationSeconds != int64(15*time.Minute/time.Second) {
+		t.Fatalf("unexpected first clipped session: %+v", first)
+	}
+	second := stats[0].Sessions[1]
+	if !second.JoinedAt.Equal(base.Add(30*time.Minute)) || !second.LeftAt.Equal(base.Add(time.Hour)) || second.DurationSeconds != int64(30*time.Minute/time.Second) {
+		t.Fatalf("unexpected second clipped session: %+v", second)
+	}
+}
+
 func TestVoiceSessionRepositoryCapsOpenSessionStatsAtNow(t *testing.T) {
 	td := newTestDatabase(t)
 	repo := NewVoiceSessionRepository(td.Pool)

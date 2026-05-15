@@ -30,6 +30,14 @@ type voiceStatsDisplayRow struct {
 	DisplayName  string
 	SessionCount int64
 	TotalSeconds int64
+	Sessions     []voiceStatsDisplaySession
+}
+
+type voiceStatsDisplaySession struct {
+	JoinedAt        time.Time
+	LeftAt          time.Time
+	DurationSeconds int64
+	IsOpen          bool
 }
 
 func newVoiceStateHandler(repo VoiceSessionStore, configuredGuildID string) func(s *discordgo.Session, v *discordgo.VoiceStateUpdate) {
@@ -218,9 +226,26 @@ func resolveVoiceStatsDisplayRows(s *discordgo.Session, guildID string, stats []
 			DisplayName:  displayName,
 			SessionCount: stat.SessionCount,
 			TotalSeconds: stat.TotalSeconds,
+			Sessions:     resolveVoiceStatsDisplaySessions(stat.Sessions),
 		})
 	}
 	return rows
+}
+
+func resolveVoiceStatsDisplaySessions(sessions []study.VoiceChannelSession) []voiceStatsDisplaySession {
+	if len(sessions) == 0 {
+		return nil
+	}
+	displaySessions := make([]voiceStatsDisplaySession, 0, len(sessions))
+	for _, session := range sessions {
+		displaySessions = append(displaySessions, voiceStatsDisplaySession{
+			JoinedAt:        session.JoinedAt,
+			LeftAt:          session.LeftAt,
+			DurationSeconds: session.DurationSeconds,
+			IsOpen:          session.IsOpen,
+		})
+	}
+	return displaySessions
 }
 
 func voiceMemberDisplayName(member *discordgo.Member) string {
@@ -261,9 +286,28 @@ func buildVoiceStatsResponse(channelName string, from, toExclusive time.Time, ro
 	}
 
 	for idx, row := range rows {
-		fmt.Fprintf(&b, "%d. %s — %s (%d회)\n", idx+1, sanitizeVoiceStatsText(row.DisplayName), formatVoiceDuration(row.TotalSeconds), row.SessionCount)
+		fmt.Fprintf(&b, "%d. %s — 총 %s (%d회)\n", idx+1, sanitizeVoiceStatsText(row.DisplayName), formatVoiceDuration(row.TotalSeconds), row.SessionCount)
+		for _, session := range row.Sessions {
+			fmt.Fprintf(&b, "   • %s — %s\n", formatVoiceSessionWindow(session, from.Location()), formatVoiceDuration(session.DurationSeconds))
+		}
 	}
 	return truncateForDiscord(strings.TrimSuffix(b.String(), "\n"), discordMessageLimit)
+}
+
+func formatVoiceSessionWindow(session voiceStatsDisplaySession, loc *time.Location) string {
+	if loc == nil {
+		loc = time.Local
+	}
+	joinedAt := session.JoinedAt.In(loc)
+	leftAt := session.LeftAt.In(loc)
+	startLabel := joinedAt.Format("2006-01-02 15:04")
+	endLabel := leftAt.Format("15:04")
+	if session.IsOpen {
+		endLabel = "현재"
+	} else if joinedAt.Format(voiceStatsDateLayout) != leftAt.Format(voiceStatsDateLayout) {
+		endLabel = leftAt.Format("2006-01-02 15:04")
+	}
+	return fmt.Sprintf("%s ~ %s", startLabel, endLabel)
 }
 
 func sanitizeVoiceStatsText(value string) string {

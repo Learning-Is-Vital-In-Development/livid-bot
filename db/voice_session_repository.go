@@ -174,5 +174,72 @@ func (r *VoiceSessionRepository) listChannelStatsAt(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate voice channel stats: %w", err)
 	}
+	if err := r.appendVoiceChannelSessionDetails(ctx, stats, guildID, channelID, from, to, now); err != nil {
+		return nil, err
+	}
 	return stats, nil
+}
+
+func (r *VoiceSessionRepository) appendVoiceChannelSessionDetails(
+	ctx context.Context,
+	stats []study.VoiceChannelStat,
+	guildID, channelID string,
+	from, to, now time.Time,
+) error {
+	if len(stats) == 0 {
+		return nil
+	}
+	userIDs := make([]string, 0, len(stats))
+	statsByUserID := make(map[string]int, len(stats))
+	for idx := range stats {
+		userIDs = append(userIDs, stats[idx].UserID)
+		statsByUserID[stats[idx].UserID] = idx
+	}
+
+	rows, err := r.pool.Query(ctx,
+		`WITH clipped_sessions AS (
+			SELECT
+				user_id,
+				GREATEST(joined_at, $3) AS joined_at,
+				LEAST(COALESCE(left_at, $6), $4) AS left_at,
+				left_at IS NULL AND $6 < $4 AS is_open
+			 FROM voice_channel_sessions
+			 WHERE guild_id = $1
+			   AND channel_id = $2
+			   AND joined_at < $4
+			   AND COALESCE(left_at, $6) > $3
+			   AND user_id = ANY($5::TEXT[])
+		 )
+		 SELECT
+			user_id,
+			joined_at,
+			left_at,
+			ROUND(EXTRACT(EPOCH FROM left_at - joined_at))::BIGINT AS duration_seconds,
+			is_open
+		 FROM clipped_sessions
+		 WHERE left_at > joined_at
+		 ORDER BY user_id, joined_at ASC, left_at ASC`,
+		guildID, channelID, from, to, userIDs, now,
+	)
+	if err != nil {
+		return fmt.Errorf("query voice channel session details: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var userID string
+		var session study.VoiceChannelSession
+		if err := rows.Scan(&userID, &session.JoinedAt, &session.LeftAt, &session.DurationSeconds, &session.IsOpen); err != nil {
+			return fmt.Errorf("scan voice channel session details: %w", err)
+		}
+		idx, ok := statsByUserID[userID]
+		if !ok {
+			continue
+		}
+		stats[idx].Sessions = append(stats[idx].Sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate voice channel session details: %w", err)
+	}
+	return nil
 }

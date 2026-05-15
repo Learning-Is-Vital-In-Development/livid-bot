@@ -112,6 +112,42 @@ func TestBuildVoiceStatsResponseUsesDisplayNamesWithoutUserIDs(t *testing.T) {
 	}
 }
 
+func TestBuildVoiceStatsResponseIncludesSessionDetails(t *testing.T) {
+	loc := time.FixedZone("KST", 9*60*60)
+	from := time.Date(2026, 5, 16, 0, 0, 0, 0, loc)
+	to := time.Date(2026, 5, 17, 0, 0, 0, 0, loc)
+	content := buildVoiceStatsResponse("스터디 음성방", from, to, []voiceStatsDisplayRow{
+		{
+			DisplayName:  "하릴",
+			SessionCount: 2,
+			TotalSeconds: int64((30*time.Minute + 75*time.Minute) / time.Second),
+			Sessions: []voiceStatsDisplaySession{
+				{
+					JoinedAt:        time.Date(2026, 5, 16, 9, 5, 0, 0, loc),
+					LeftAt:          time.Date(2026, 5, 16, 9, 35, 0, 0, loc),
+					DurationSeconds: int64(30 * time.Minute / time.Second),
+				},
+				{
+					JoinedAt:        time.Date(2026, 5, 16, 13, 0, 0, 0, loc),
+					LeftAt:          time.Date(2026, 5, 16, 14, 15, 0, 0, loc),
+					DurationSeconds: int64(75 * time.Minute / time.Second),
+				},
+			},
+		},
+	})
+
+	checks := []string{
+		"하릴 — 총 1시간 45분 (2회)",
+		"2026-05-16 09:05 ~ 09:35 — 30분",
+		"2026-05-16 13:00 ~ 14:15 — 1시간 15분",
+	}
+	for _, check := range checks {
+		if !strings.Contains(content, check) {
+			t.Fatalf("expected response to include %q, got: %s", check, content)
+		}
+	}
+}
+
 func TestBuildVoiceStatsResponseBreaksMentionsFromDisplayNames(t *testing.T) {
 	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)

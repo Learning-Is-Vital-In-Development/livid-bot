@@ -91,6 +91,7 @@ mise run livid-bot:deploy
   - `limit` (integer, optional, default 20, max 25)
 - 동작
   - 지정한 음성채널의 기간별 출석/체류 시간 통계를 표시 (ephemeral)
+  - 사용자별 총 체류 시간/세션 수와 함께 각 세션의 입장 시각, 퇴장/집계 종료 시각, 세션별 체류 시간을 표시
   - DB에는 `user_id`만 저장하고, 응답 시점에 Discord에서 nickname/global name/username을 조회해 표시
 
 ### `/create-study`
@@ -206,7 +207,7 @@ Docker Compose 기본 설정(`docker-compose.yml`):
 ## Voice Attendance
 - `VoiceStateUpdate` 이벤트를 기반으로 음성채널 입장/퇴장/이동을 `voice_channel_sessions` 테이블에 세션 형태로 기록합니다.
 - 저장 필드는 최소화합니다: guild/channel/user ID, `joined_at`, `left_at`, `end_reason`만 저장하며 username/nickname/global name은 DB에 저장하지 않습니다.
-- `/voice-stats`는 관리자 전용이며 ephemeral 응답으로만 통계를 표시합니다.
+- `/voice-stats`는 관리자 전용이며 ephemeral 응답으로만 통계를 표시합니다. 응답에는 사용자별 총 체류 시간/세션 수와 세션별 `입장 ~ 퇴장/현재` 시각 및 체류 시간이 포함됩니다.
 - `/voice-stats` 표시 이름은 응답 시점에 Discord에서 guild nickname -> global display name -> username 순으로 조회합니다.
 - 봇 재시작 시 기존 open session은 `end_reason='bot_restart'`로 닫아 stale session을 방지합니다.
 - 음성 내용, 발화 여부, mute/deaf/video/stream 상태는 저장하지 않습니다.
