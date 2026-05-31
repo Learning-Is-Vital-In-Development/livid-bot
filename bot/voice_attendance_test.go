@@ -1,11 +1,15 @@
 package bot
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"livid-bot/study"
 )
 
 func TestVoiceChannelTransitionClassifiesMovement(t *testing.T) {
@@ -199,6 +203,147 @@ func TestVoiceStatsCommandIsAdminOnly(t *testing.T) {
 	}
 }
 
+func TestVoiceStatsHandlerDefersBeforeLoadingStatsAndEditsOriginalResponse(t *testing.T) {
+	responder := &fakeVoiceStatsResponder{}
+	repo := &fakeVoiceSessionStore{
+		listFunc: func(_ context.Context, guildID, channelID string, from, to time.Time, limit int) ([]study.VoiceChannelStat, error) {
+			if responder.deferCalls != 1 {
+				t.Fatalf("expected interaction to be deferred before DB/member work, defer calls=%d", responder.deferCalls)
+			}
+			if guildID != "guild-1" || channelID != "voice-1" || limit != 20 {
+				t.Fatalf("unexpected query args guild=%q channel=%q limit=%d", guildID, channelID, limit)
+			}
+			if from.Format(voiceStatsDateLayout) != "2026-05-01" || to.Sub(from) != 24*time.Hour {
+				t.Fatalf("unexpected query range from=%s to=%s", from, to)
+			}
+			return []study.VoiceChannelStat{{UserID: "user-1", SessionCount: 1, TotalSeconds: int64(time.Hour / time.Second)}}, nil
+		},
+	}
+	resolver := &fakeVoiceStatsMemberResolver{names: map[string]string{"user-1": "하릴"}}
+	handler := newVoiceStatsHandlerWithDeps(repo, responder, resolver)
+
+	handler(nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
+
+	if responder.deferCalls != 1 {
+		t.Fatalf("expected one defer call, got %d", responder.deferCalls)
+	}
+	if responder.editCalls != 1 {
+		t.Fatalf("expected one edit call, got %d", responder.editCalls)
+	}
+	if !strings.Contains(responder.editedContent, "하릴") || !strings.Contains(responder.editedContent, "1시간") {
+		t.Fatalf("expected final content to contain resolved stats, got: %s", responder.editedContent)
+	}
+}
+
+func TestVoiceStatsHandlerLogsPhaseDurations(t *testing.T) {
+	orig := slog.Default()
+	logHandler := &recordingHandler{}
+	slog.SetDefault(slog.New(logHandler))
+	defer slog.SetDefault(orig)
+
+	responder := &fakeVoiceStatsResponder{}
+	repo := &fakeVoiceSessionStore{
+		listFunc: func(context.Context, string, string, time.Time, time.Time, int) ([]study.VoiceChannelStat, error) {
+			return nil, nil
+		},
+	}
+	handler := newVoiceStatsHandlerWithDeps(repo, responder, &fakeVoiceStatsMemberResolver{})
+
+	handler(nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
+
+	var success string
+	for _, record := range logHandler.records {
+		if record.Level == slog.LevelInfo && strings.Contains(record.Message, "voice-stats returned") {
+			success = record.Message
+			break
+		}
+	}
+	if success == "" {
+		t.Fatalf("expected voice-stats success log, got records: %+v", logHandler.records)
+	}
+	for _, field := range []string{"db_query_ms=", "member_resolve_ms=", "respond_edit_ms="} {
+		if !strings.Contains(success, field) {
+			t.Fatalf("expected success log to include %s, got: %s", field, success)
+		}
+	}
+}
+
+func TestVoiceStatsHandlerEditsDeferredErrorAndAuditsWhenStatsLoadFails(t *testing.T) {
+	store := &fakeAuditStore{}
+	setCommandAuditStore(store)
+	defer setCommandAuditStore(nil)
+
+	responder := &fakeVoiceStatsResponder{}
+	repo := &fakeVoiceSessionStore{
+		listFunc: func(context.Context, string, string, time.Time, time.Time, int) ([]study.VoiceChannelStat, error) {
+			return nil, errors.New("database unavailable")
+		},
+	}
+	handler := newVoiceStatsHandlerWithDeps(repo, responder, &fakeVoiceStatsMemberResolver{})
+
+	handler(nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
+
+	if responder.deferCalls != 1 || responder.editCalls != 1 {
+		t.Fatalf("expected defer then one error edit, defer=%d edit=%d", responder.deferCalls, responder.editCalls)
+	}
+	if responder.editedContent != "음성 출석 통계를 불러오지 못했습니다." {
+		t.Fatalf("unexpected deferred error content: %s", responder.editedContent)
+	}
+	if len(store.errors) != 1 || !strings.Contains(store.errors[0].message, "음성 출석 통계를 불러오지 못했습니다") {
+		t.Fatalf("expected command audit error, got %+v", store.errors)
+	}
+}
+
+func TestCachedVoiceStatsMemberResolverCachesNamesAndFallsBackToSafeMention(t *testing.T) {
+	calls := map[string]int{}
+	resolver := newCachedVoiceStatsMemberResolver(
+		func(_ *discordgo.Session, _ string, userID string) (*discordgo.Member, error) {
+			calls[userID]++
+			if userID == "123456789012345678" {
+				return &discordgo.Member{Nick: "하릴", User: &discordgo.User{Username: "haril"}}, nil
+			}
+			return nil, errors.New("discord member lookup failed")
+		},
+		func() time.Time { return time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC) },
+	)
+
+	first, mention, err := resolver.displayName(nil, "guild-1", "123456789012345678")
+	if err != nil {
+		t.Fatalf("resolve first name: %v", err)
+	}
+	second, secondMention, err := resolver.displayName(nil, "guild-1", "123456789012345678")
+	if err != nil {
+		t.Fatalf("resolve cached name: %v", err)
+	}
+	if first != "하릴" || second != "하릴" || mention || secondMention {
+		t.Fatalf("unexpected cached names first=(%q,%v) second=(%q,%v)", first, mention, second, secondMention)
+	}
+	if calls["123456789012345678"] != 1 {
+		t.Fatalf("expected successful lookup to be cached, calls=%d", calls["123456789012345678"])
+	}
+
+	fallback, isMention, err := resolver.displayName(nil, "guild-1", "999999999999999999")
+	if err == nil {
+		t.Fatal("expected lookup error to be returned for logging")
+	}
+	if fallback != "<@999999999999999999>" || !isMention {
+		t.Fatalf("expected safe mention fallback, got name=%q mention=%v", fallback, isMention)
+	}
+}
+
+func TestVoiceStatsWebhookEditDisablesMentions(t *testing.T) {
+	edit := voiceStatsWebhookEdit("hello <@999999999999999999>")
+	if edit.Content == nil || *edit.Content == "" {
+		t.Fatal("expected edit content to be set")
+	}
+	if edit.AllowedMentions == nil {
+		t.Fatal("expected allowed_mentions to be set")
+	}
+	if len(edit.AllowedMentions.Parse) != 0 || len(edit.AllowedMentions.Users) != 0 || len(edit.AllowedMentions.Roles) != 0 || edit.AllowedMentions.RepliedUser {
+		t.Fatalf("expected all mentions to be disabled, got %+v", edit.AllowedMentions)
+	}
+}
+
 func findCommandForTest(name string) *discordgo.ApplicationCommand {
 	for _, cmd := range commands {
 		if cmd.Name == name {
@@ -215,4 +360,72 @@ func findCommandOptionForTest(cmd *discordgo.ApplicationCommand, name string) *d
 		}
 	}
 	return nil
+}
+
+type fakeVoiceSessionStore struct {
+	listFunc func(context.Context, string, string, time.Time, time.Time, int) ([]study.VoiceChannelStat, error)
+}
+
+func (f *fakeVoiceSessionStore) RecordVoiceTransition(context.Context, string, string, string, string, time.Time) error {
+	return nil
+}
+
+func (f *fakeVoiceSessionStore) CloseOpenSessions(context.Context, time.Time, string) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeVoiceSessionStore) ListChannelStats(ctx context.Context, guildID, channelID string, from, to time.Time, limit int) ([]study.VoiceChannelStat, error) {
+	if f.listFunc == nil {
+		return nil, nil
+	}
+	return f.listFunc(ctx, guildID, channelID, from, to, limit)
+}
+
+type fakeVoiceStatsResponder struct {
+	deferCalls    int
+	editCalls     int
+	editedContent string
+}
+
+func (f *fakeVoiceStatsResponder) deferEphemeral(*discordgo.Session, *discordgo.InteractionCreate) error {
+	f.deferCalls++
+	return nil
+}
+
+func (f *fakeVoiceStatsResponder) editOriginal(_ *discordgo.Session, _ *discordgo.InteractionCreate, content string) error {
+	f.editCalls++
+	f.editedContent = content
+	return nil
+}
+
+type fakeVoiceStatsMemberResolver struct {
+	names map[string]string
+}
+
+func (f *fakeVoiceStatsMemberResolver) displayName(_ *discordgo.Session, _ string, userID string) (string, bool, error) {
+	if f.names != nil {
+		if name, ok := f.names[userID]; ok {
+			return name, false, nil
+		}
+	}
+	return "<@" + userID + ">", true, errors.New("missing fake member")
+}
+
+func newVoiceStatsInteractionForTest(channelID, from, to string) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		ID:        "interaction-1",
+		AppID:     "app-1",
+		Token:     "token-1",
+		Type:      discordgo.InteractionApplicationCommand,
+		GuildID:   "guild-1",
+		ChannelID: "command-channel-1",
+		Data: discordgo.ApplicationCommandInteractionData{
+			Name: "voice-stats",
+			Options: []*discordgo.ApplicationCommandInteractionDataOption{
+				{Name: "channel", Type: discordgo.ApplicationCommandOptionChannel, Value: channelID},
+				{Name: "from", Type: discordgo.ApplicationCommandOptionString, Value: from},
+				{Name: "to", Type: discordgo.ApplicationCommandOptionString, Value: to},
+			},
+		},
+	}}
 }

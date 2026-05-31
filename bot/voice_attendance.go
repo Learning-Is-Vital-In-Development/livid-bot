@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -13,9 +14,10 @@ import (
 )
 
 const (
-	voiceStatsDefaultLimit = 20
-	voiceStatsMaxLimit     = 25
-	voiceStatsDateLayout   = "2006-01-02"
+	voiceStatsDefaultLimit       = 20
+	voiceStatsMaxLimit           = 25
+	voiceStatsDateLayout         = "2006-01-02"
+	voiceStatsMemberNameCacheTTL = 10 * time.Minute
 )
 
 var errInvalidVoiceStatsDateRange = errors.New("invalid voice stats date range")
@@ -26,11 +28,37 @@ type VoiceSessionStore interface {
 	ListChannelStats(ctx context.Context, guildID, channelID string, from, to time.Time, limit int) ([]study.VoiceChannelStat, error)
 }
 
+type voiceStatsInteractionResponder interface {
+	deferEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate) error
+	editOriginal(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error
+}
+
+type voiceStatsMemberNameResolver interface {
+	displayName(s *discordgo.Session, guildID, userID string) (string, bool, error)
+}
+
+type voiceStatsMemberFetcher func(s *discordgo.Session, guildID, userID string) (*discordgo.Member, error)
+
+type cachedVoiceStatsMemberResolver struct {
+	mu      sync.Mutex
+	cache   map[string]cachedVoiceStatsMemberName
+	fetch   voiceStatsMemberFetcher
+	nowFunc func() time.Time
+}
+
+type cachedVoiceStatsMemberName struct {
+	displayName string
+	expiresAt   time.Time
+}
+
+type discordVoiceStatsResponder struct{}
+
 type voiceStatsDisplayRow struct {
-	DisplayName  string
-	SessionCount int64
-	TotalSeconds int64
-	Sessions     []voiceStatsDisplaySession
+	DisplayName          string
+	DisplayNameIsMention bool
+	SessionCount         int64
+	TotalSeconds         int64
+	Sessions             []voiceStatsDisplaySession
 }
 
 type voiceStatsDisplaySession struct {
@@ -103,6 +131,25 @@ func voiceChannelTransition(v *discordgo.VoiceStateUpdate) (beforeChannelID, aft
 }
 
 func newVoiceStatsHandler(repo VoiceSessionStore) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return newVoiceStatsHandlerWithDeps(
+		repo,
+		discordVoiceStatsResponder{},
+		newCachedVoiceStatsMemberResolver(nil, nil),
+	)
+}
+
+func newVoiceStatsHandlerWithDeps(
+	repo VoiceSessionStore,
+	responder voiceStatsInteractionResponder,
+	memberResolver voiceStatsMemberNameResolver,
+) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if responder == nil {
+		responder = discordVoiceStatsResponder{}
+	}
+	if memberResolver == nil {
+		memberResolver = newCachedVoiceStatsMemberResolver(nil, nil)
+	}
+
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if repo == nil {
 			respondError(s, i, "음성 출석 저장소가 설정되어 있지 않습니다.")
@@ -118,8 +165,7 @@ func newVoiceStatsHandler(repo VoiceSessionStore) func(s *discordgo.Session, i *
 			return
 		}
 
-		channel := channelOpt.ChannelValue(s)
-		channelID := channel.ID
+		channelID := channelOpt.ChannelValue(nil).ID
 		toRaw := ""
 		if toOpt != nil {
 			toRaw = toOpt.StringValue()
@@ -133,28 +179,138 @@ func newVoiceStatsHandler(repo VoiceSessionStore) func(s *discordgo.Session, i *
 
 		logCommand(i, "start", "voice-stats requested channel=%s from=%s to=%s limit=%d", channelID, from.Format(time.RFC3339), to.Format(time.RFC3339), limit)
 
-		stats, err := repo.ListChannelStats(context.Background(), i.GuildID, channelID, from, to, limit)
-		if err != nil {
-			slog.Error("failed to load voice stats", "guild_id", i.GuildID, "channel_id", channelID, "error", err)
-			respondError(s, i, "음성 출석 통계를 불러오지 못했습니다.")
+		if err := responder.deferEphemeral(s, i); err != nil {
+			logCommand(i, "error", "failed to defer voice-stats command: %v", err)
 			return
 		}
 
-		rows := resolveVoiceStatsDisplayRows(s, i.GuildID, stats)
-		content := buildVoiceStatsResponse(voiceChannelDisplayName(channel), from, to, rows)
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content:         content,
-				Flags:           discordgo.MessageFlagsEphemeral,
-				AllowedMentions: &discordgo.MessageAllowedMentions{},
-			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond voice-stats command: %v", err)
+		dbQueryStart := time.Now()
+		stats, err := repo.ListChannelStats(context.Background(), i.GuildID, channelID, from, to, limit)
+		dbQueryMs := time.Since(dbQueryStart).Milliseconds()
+		if err != nil {
+			slog.Error("failed to load voice stats", "guild_id", i.GuildID, "channel_id", channelID, "error", err)
+			editVoiceStatsDeferredError(responder, s, i, "음성 출석 통계를 불러오지 못했습니다.")
 			return
 		}
-		logCommand(i, "success", "voice-stats returned count=%d channel=%s", len(rows), channelID)
+
+		memberResolveStart := time.Now()
+		rows := resolveVoiceStatsDisplayRowsWithResolver(s, i.GuildID, stats, memberResolver)
+		memberResolveMs := time.Since(memberResolveStart).Milliseconds()
+
+		channel := channelOpt.ChannelValue(s)
+		content := buildVoiceStatsResponse(voiceChannelDisplayName(channel), from, to, rows)
+		respondEditStart := time.Now()
+		if err := responder.editOriginal(s, i, content); err != nil {
+			logCommand(i, "error", "failed to edit voice-stats response: %v db_query_ms=%d member_resolve_ms=%d", err, dbQueryMs, memberResolveMs)
+			return
+		}
+		respondEditMs := time.Since(respondEditStart).Milliseconds()
+		logCommand(i, "success", "voice-stats returned count=%d channel=%s db_query_ms=%d member_resolve_ms=%d respond_edit_ms=%d", len(rows), channelID, dbQueryMs, memberResolveMs, respondEditMs)
 	}
+}
+
+func editVoiceStatsDeferredError(responder voiceStatsInteractionResponder, s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	logCommand(i, "error", "%s", message)
+	if err := responder.editOriginal(s, i, message); err != nil {
+		logCommand(i, "error", "failed to edit voice-stats error response: %v", err)
+	}
+}
+
+func (discordVoiceStatsResponder) deferEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags:           discordgo.MessageFlagsEphemeral,
+			AllowedMentions: &discordgo.MessageAllowedMentions{},
+		},
+	})
+}
+
+func (discordVoiceStatsResponder) editOriginal(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
+	_, err := s.InteractionResponseEdit(i.Interaction, voiceStatsWebhookEdit(content))
+	return err
+}
+
+func voiceStatsWebhookEdit(content string) *discordgo.WebhookEdit {
+	return &discordgo.WebhookEdit{
+		Content:         &content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{},
+	}
+}
+
+func newCachedVoiceStatsMemberResolver(fetch voiceStatsMemberFetcher, nowFunc func() time.Time) *cachedVoiceStatsMemberResolver {
+	if fetch == nil {
+		fetch = defaultVoiceStatsMemberFetcher
+	}
+	if nowFunc == nil {
+		nowFunc = time.Now
+	}
+	return &cachedVoiceStatsMemberResolver{
+		cache:   make(map[string]cachedVoiceStatsMemberName),
+		fetch:   fetch,
+		nowFunc: nowFunc,
+	}
+}
+
+func defaultVoiceStatsMemberFetcher(s *discordgo.Session, guildID, userID string) (*discordgo.Member, error) {
+	if s == nil {
+		return nil, errors.New("discord session is nil")
+	}
+	return s.GuildMember(guildID, userID)
+}
+
+func (r *cachedVoiceStatsMemberResolver) displayName(s *discordgo.Session, guildID, userID string) (string, bool, error) {
+	fallbackName, fallbackIsMention := voiceStatsFallbackDisplayName(userID)
+	if guildID == "" || userID == "" {
+		return fallbackName, fallbackIsMention, errors.New("guild id and user id are required")
+	}
+	if r == nil {
+		return fallbackName, fallbackIsMention, errors.New("voice stats member resolver is nil")
+	}
+	if r.nowFunc == nil {
+		r.nowFunc = time.Now
+	}
+	if r.fetch == nil {
+		r.fetch = defaultVoiceStatsMemberFetcher
+	}
+	if r.cache == nil {
+		r.cache = make(map[string]cachedVoiceStatsMemberName)
+	}
+
+	key := guildID + ":" + userID
+	now := r.nowFunc()
+	r.mu.Lock()
+	cached, ok := r.cache[key]
+	if ok && now.Before(cached.expiresAt) {
+		r.mu.Unlock()
+		return cached.displayName, false, nil
+	}
+	r.mu.Unlock()
+
+	member, err := r.fetch(s, guildID, userID)
+	if err != nil {
+		return fallbackName, fallbackIsMention, err
+	}
+	displayName := voiceMemberDisplayName(member)
+	if displayName == "" || displayName == "알 수 없는 사용자" {
+		return fallbackName, fallbackIsMention, errors.New("resolved member has no display name")
+	}
+
+	r.mu.Lock()
+	r.cache[key] = cachedVoiceStatsMemberName{
+		displayName: displayName,
+		expiresAt:   now.Add(voiceStatsMemberNameCacheTTL),
+	}
+	r.mu.Unlock()
+	return displayName, false, nil
+}
+
+func voiceStatsFallbackDisplayName(userID string) (string, bool) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "알 수 없는 사용자", false
+	}
+	return fmt.Sprintf("<@%s>", userID), true
 }
 
 func parseVoiceStatsDateRange(fromRaw, toRaw string, loc *time.Location) (time.Time, time.Time, error) {
@@ -210,23 +366,22 @@ func voiceStatsLimitFromOption(opt *discordgo.ApplicationCommandInteractionDataO
 	return limit
 }
 
-func resolveVoiceStatsDisplayRows(s *discordgo.Session, guildID string, stats []study.VoiceChannelStat) []voiceStatsDisplayRow {
+func resolveVoiceStatsDisplayRowsWithResolver(s *discordgo.Session, guildID string, stats []study.VoiceChannelStat, resolver voiceStatsMemberNameResolver) []voiceStatsDisplayRow {
+	if resolver == nil {
+		resolver = newCachedVoiceStatsMemberResolver(nil, nil)
+	}
 	rows := make([]voiceStatsDisplayRow, 0, len(stats))
 	for _, stat := range stats {
-		displayName := "알 수 없는 사용자"
-		if s != nil && guildID != "" && stat.UserID != "" {
-			member, err := s.GuildMember(guildID, stat.UserID)
-			if err != nil {
-				slog.Warn("failed to resolve voice stats member display name", "guild_id", guildID, "error", err)
-			} else {
-				displayName = voiceMemberDisplayName(member)
-			}
+		displayName, isMention, err := resolver.displayName(s, guildID, stat.UserID)
+		if err != nil {
+			slog.Warn("failed to resolve voice stats member display name", "guild_id", guildID, "user_id", stat.UserID, "error", err)
 		}
 		rows = append(rows, voiceStatsDisplayRow{
-			DisplayName:  displayName,
-			SessionCount: stat.SessionCount,
-			TotalSeconds: stat.TotalSeconds,
-			Sessions:     resolveVoiceStatsDisplaySessions(stat.Sessions),
+			DisplayName:          displayName,
+			DisplayNameIsMention: isMention,
+			SessionCount:         stat.SessionCount,
+			TotalSeconds:         stat.TotalSeconds,
+			Sessions:             resolveVoiceStatsDisplaySessions(stat.Sessions),
 		})
 	}
 	return rows
@@ -286,7 +441,7 @@ func buildVoiceStatsResponse(channelName string, from, toExclusive time.Time, ro
 	}
 
 	for idx, row := range rows {
-		fmt.Fprintf(&b, "%d. %s — 총 %s (%d회)\n", idx+1, sanitizeVoiceStatsText(row.DisplayName), formatVoiceDuration(row.TotalSeconds), row.SessionCount)
+		fmt.Fprintf(&b, "%d. %s — 총 %s (%d회)\n", idx+1, formatVoiceStatsDisplayName(row), formatVoiceDuration(row.TotalSeconds), row.SessionCount)
 		for _, session := range row.Sessions {
 			fmt.Fprintf(&b, "   • %s — %s\n", formatVoiceSessionWindow(session, from.Location()), formatVoiceDuration(session.DurationSeconds))
 		}
@@ -308,6 +463,29 @@ func formatVoiceSessionWindow(session voiceStatsDisplaySession, loc *time.Locati
 		endLabel = leftAt.Format("2006-01-02 15:04")
 	}
 	return fmt.Sprintf("%s ~ %s", startLabel, endLabel)
+}
+
+func formatVoiceStatsDisplayName(row voiceStatsDisplayRow) string {
+	if row.DisplayNameIsMention && isDiscordUserMention(row.DisplayName) {
+		return row.DisplayName
+	}
+	return sanitizeVoiceStatsText(row.DisplayName)
+}
+
+func isDiscordUserMention(value string) bool {
+	if !strings.HasPrefix(value, "<@") || !strings.HasSuffix(value, ">") {
+		return false
+	}
+	id := strings.TrimPrefix(strings.TrimSuffix(strings.TrimPrefix(value, "<@"), ">"), "!")
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func sanitizeVoiceStatsText(value string) string {
