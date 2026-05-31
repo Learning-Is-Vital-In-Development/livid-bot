@@ -19,8 +19,8 @@ func newStudyStartHandler(
 	memberRepo *db.MemberRepository,
 	recruitRepo *db.RecruitRepository,
 	reactionHandler *ReactionHandler,
-) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options := i.ApplicationCommandData().Options
 		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
 		for _, opt := range options {
@@ -29,28 +29,26 @@ func newStudyStartHandler(
 
 		opt, ok := optionMap["branch"]
 		if !ok {
-			respondError(s, i, "Missing required option: branch.")
+			respondError(ctx, s, i, "Missing required option: branch.")
 			return
 		}
 		branch := opt.StringValue()
-		logCommand(i, "start", "study-start requested branch=%s", branch)
+		logCommand(ctx, i, "start", "study-start requested branch=%s", branch)
 
 		if !isValidBranch(branch) {
-			respondError(s, i, fmt.Sprintf("Invalid branch format: %q. Use YY-Q (e.g. 26-2).", branch))
+			respondError(ctx, s, i, fmt.Sprintf("Invalid branch format: %q. Use YY-Q (e.g. 26-2).", branch))
 			return
 		}
-
-		ctx := context.Background()
 
 		messageIDs, studyInfos, err := recruitRepo.FindOpenMappingsByBranch(ctx, branch)
 		if err != nil {
 			slog.Error("failed to find open mappings by branch", "branch", branch, "error", err)
-			respondError(s, i, "Failed to load recruitment data.")
+			respondError(ctx, s, i, "Failed to load recruitment data.")
 			return
 		}
 
 		if len(studyInfos) == 0 {
-			respondError(s, i, fmt.Sprintf("No open recruitments found for branch %q.", branch))
+			respondError(ctx, s, i, fmt.Sprintf("No open recruitments found for branch %q.", branch))
 			return
 		}
 
@@ -58,7 +56,7 @@ func newStudyStartHandler(
 
 		if _, err := recruitRepo.CloseByBranch(ctx, branch); err != nil {
 			slog.Error("failed to close recruit messages by branch", "branch", branch, "error", err)
-			respondError(s, i, "Failed to close recruitment.")
+			respondError(ctx, s, i, "Failed to close recruitment.")
 			return
 		}
 
@@ -75,7 +73,7 @@ func newStudyStartHandler(
 			}
 
 			if len(members) < minMembersToStart {
-				archiveResult, archiveErr := archiveStudy(s, studyRepo, i.GuildID, studyToModel(info))
+				archiveResult, archiveErr := archiveStudy(ctx, s, studyRepo, i.GuildID, studyToModel(info))
 				if archiveErr != nil {
 					slog.Error("failed to auto-archive study", "study_id", info.StudyID, "study_name", info.StudyName, "error", archiveErr)
 					errors = append(errors, fmt.Sprintf("%s: archive failed", info.StudyName))
@@ -84,6 +82,7 @@ func newStudyStartHandler(
 
 				if _, msgErr := s.ChannelMessageSend(info.ChannelID,
 					fmt.Sprintf("모집 인원이 %d명 미만이어서 스터디가 자동 아카이브되었습니다.", minMembersToStart),
+					discordgo.WithContext(ctx),
 				); msgErr != nil {
 					slog.Warn("failed to send archive notice to channel", "channel_id", info.ChannelID, "error", msgErr)
 				}
@@ -96,6 +95,7 @@ func newStudyStartHandler(
 			} else {
 				if _, msgErr := s.ChannelMessageSend(info.ChannelID,
 					fmt.Sprintf("<@&%s> 스터디에 오신 것을 환영합니다! 스터디를 진행해주세요.", info.RoleID),
+					discordgo.WithContext(ctx),
 				); msgErr != nil {
 					slog.Warn("failed to send start notice to channel", "channel_id", info.ChannelID, "error", msgErr)
 				}
@@ -111,11 +111,11 @@ func newStudyStartHandler(
 				Content: summary,
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond study-start summary: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond study-start summary: %v", err)
 			return
 		}
-		logCommand(i, "success", "study-start completed branch=%s started=%d archived=%d errors=%d",
+		logCommand(ctx, i, "success", "study-start completed branch=%s started=%d archived=%d errors=%d",
 			branch, len(started), len(archived), len(errors))
 	}
 }
@@ -132,22 +132,21 @@ func studyToModel(info db.RecruitStudyInfo) study.Study {
 	}
 }
 
-func newStudyStartAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ctx := context.Background()
+func newStudyStartAutocompleteHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		query := focusedStringOptionValue(i.ApplicationCommandData().Options, "branch")
-		logCommand(i, "start", "study-start branch autocomplete query=%q", query)
+		logCommand(ctx, i, "start", "study-start branch autocomplete query=%q", query)
 
 		branches, err := studyRepo.FindDistinctActiveBranches(ctx)
 		if err != nil {
 			slog.Error("failed to load active branches for study-start autocomplete", "error", err)
-			respondAutocomplete(s, i, nil)
+			respondAutocomplete(ctx, s, i, nil)
 			return
 		}
 
 		choices := buildRecruitBranchAutocompleteChoices(branches, query, recruitBranchAutocompleteMaxChoices)
-		respondAutocomplete(s, i, choices)
-		logCommand(i, "success", "study-start branch autocomplete choices=%d", len(choices))
+		respondAutocomplete(ctx, s, i, choices)
+		logCommand(ctx, i, "success", "study-start branch autocomplete choices=%d", len(choices))
 	}
 }
 

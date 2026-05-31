@@ -222,7 +222,7 @@ func TestVoiceStatsHandlerDefersBeforeLoadingStatsAndEditsOriginalResponse(t *te
 	resolver := &fakeVoiceStatsMemberResolver{names: map[string]string{"user-1": "하릴"}}
 	handler := newVoiceStatsHandlerWithDeps(repo, responder, resolver)
 
-	handler(nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
+	handler(context.Background(), nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
 
 	if responder.deferCalls != 1 {
 		t.Fatalf("expected one defer call, got %d", responder.deferCalls)
@@ -249,7 +249,7 @@ func TestVoiceStatsHandlerLogsPhaseDurations(t *testing.T) {
 	}
 	handler := newVoiceStatsHandlerWithDeps(repo, responder, &fakeVoiceStatsMemberResolver{})
 
-	handler(nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
+	handler(context.Background(), nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
 
 	var success string
 	for _, record := range logHandler.records {
@@ -281,7 +281,7 @@ func TestVoiceStatsHandlerEditsDeferredErrorAndAuditsWhenStatsLoadFails(t *testi
 	}
 	handler := newVoiceStatsHandlerWithDeps(repo, responder, &fakeVoiceStatsMemberResolver{})
 
-	handler(nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
+	handler(context.Background(), nil, newVoiceStatsInteractionForTest("voice-1", "2026-05-01", "2026-05-01"))
 
 	if responder.deferCalls != 1 || responder.editCalls != 1 {
 		t.Fatalf("expected defer then one error edit, defer=%d edit=%d", responder.deferCalls, responder.editCalls)
@@ -297,7 +297,7 @@ func TestVoiceStatsHandlerEditsDeferredErrorAndAuditsWhenStatsLoadFails(t *testi
 func TestCachedVoiceStatsMemberResolverCachesNamesAndFallsBackToSafeMention(t *testing.T) {
 	calls := map[string]int{}
 	resolver := newCachedVoiceStatsMemberResolver(
-		func(_ *discordgo.Session, _ string, userID string) (*discordgo.Member, error) {
+		func(_ context.Context, _ *discordgo.Session, _ string, userID string) (*discordgo.Member, error) {
 			calls[userID]++
 			if userID == "123456789012345678" {
 				return &discordgo.Member{Nick: "하릴", User: &discordgo.User{Username: "haril"}}, nil
@@ -307,11 +307,11 @@ func TestCachedVoiceStatsMemberResolverCachesNamesAndFallsBackToSafeMention(t *t
 		func() time.Time { return time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC) },
 	)
 
-	first, mention, err := resolver.displayName(nil, "guild-1", "123456789012345678")
+	first, mention, err := resolver.displayName(context.Background(), nil, "guild-1", "123456789012345678")
 	if err != nil {
 		t.Fatalf("resolve first name: %v", err)
 	}
-	second, secondMention, err := resolver.displayName(nil, "guild-1", "123456789012345678")
+	second, secondMention, err := resolver.displayName(context.Background(), nil, "guild-1", "123456789012345678")
 	if err != nil {
 		t.Fatalf("resolve cached name: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestCachedVoiceStatsMemberResolverCachesNamesAndFallsBackToSafeMention(t *t
 		t.Fatalf("expected successful lookup to be cached, calls=%d", calls["123456789012345678"])
 	}
 
-	fallback, isMention, err := resolver.displayName(nil, "guild-1", "999999999999999999")
+	fallback, isMention, err := resolver.displayName(context.Background(), nil, "guild-1", "999999999999999999")
 	if err == nil {
 		t.Fatal("expected lookup error to be returned for logging")
 	}
@@ -387,12 +387,12 @@ type fakeVoiceStatsResponder struct {
 	editedContent string
 }
 
-func (f *fakeVoiceStatsResponder) deferEphemeral(*discordgo.Session, *discordgo.InteractionCreate) error {
+func (f *fakeVoiceStatsResponder) deferEphemeral(context.Context, *discordgo.Session, *discordgo.InteractionCreate) error {
 	f.deferCalls++
 	return nil
 }
 
-func (f *fakeVoiceStatsResponder) editOriginal(_ *discordgo.Session, _ *discordgo.InteractionCreate, content string) error {
+func (f *fakeVoiceStatsResponder) editOriginal(_ context.Context, _ *discordgo.Session, _ *discordgo.InteractionCreate, content string) error {
 	f.editCalls++
 	f.editedContent = content
 	return nil
@@ -402,7 +402,7 @@ type fakeVoiceStatsMemberResolver struct {
 	names map[string]string
 }
 
-func (f *fakeVoiceStatsMemberResolver) displayName(_ *discordgo.Session, _ string, userID string) (string, bool, error) {
+func (f *fakeVoiceStatsMemberResolver) displayName(_ context.Context, _ *discordgo.Session, _ string, userID string) (string, bool, error) {
 	if f.names != nil {
 		if name, ok := f.names[userID]; ok {
 			return name, false, nil

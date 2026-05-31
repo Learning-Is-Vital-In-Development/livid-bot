@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"livid-bot/db"
 )
 
@@ -49,7 +51,7 @@ func Run(cfg Config) error {
 		slog.Warn("failed to load reaction mappings", "error", err)
 	}
 
-	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+	commandHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelp,
 		"create-study":  newCreateStudyHandler(cfg.StudyRepo),
 		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
@@ -63,7 +65,7 @@ func Run(cfg Config) error {
 		"vote":          newVoteHandler(cfg.SuggestionRepo),
 		"voice-stats":   newVoiceStatsHandler(cfg.VoiceRepo),
 	}
-	autocompleteHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+	autocompleteHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelpAutocomplete,
 		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
 		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
@@ -72,33 +74,36 @@ func Run(cfg Config) error {
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		ctx, span := startInteractionSpan(context.Background(), i)
+		defer span.End()
+
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			commandName := i.ApplicationCommandData().Name
-			recordCommandTriggered(i)
-			logCommand(i, "dispatch", "received application command")
+			recordCommandTriggered(ctx, i)
+			logCommand(ctx, i, "dispatch", "received application command")
 			if h, ok := commandHandlers[commandName]; ok {
-				h(s, i)
+				h(ctx, s, i)
 			} else {
-				logCommand(i, "error", "no handler registered for command=%s", commandName)
+				logCommand(ctx, i, "error", "no handler registered for command=%s", commandName)
 			}
 		case discordgo.InteractionApplicationCommandAutocomplete:
 			commandName := i.ApplicationCommandData().Name
-			logCommand(i, "dispatch", "received autocomplete interaction")
+			logCommand(ctx, i, "dispatch", "received autocomplete interaction")
 			if h, ok := autocompleteHandlers[commandName]; ok {
-				h(s, i)
+				h(ctx, s, i)
 			}
 		case discordgo.InteractionModalSubmit:
 			customID := i.ModalSubmitData().CustomID
 			switch customID {
 			case "suggest_modal":
-				newSuggestModalHandler(cfg.SuggestionRepo)(s, i)
+				newSuggestModalHandler(cfg.SuggestionRepo)(ctx, s, i)
 			}
 		case discordgo.InteractionMessageComponent:
 			customID := i.MessageComponentData().CustomID
 			switch customID {
 			case "vote_select":
-				newVoteSelectHandler(cfg.SuggestionRepo)(s, i)
+				newVoteSelectHandler(cfg.SuggestionRepo)(ctx, s, i)
 			}
 		}
 	})
@@ -136,6 +141,13 @@ func configureDiscordSession(discord *discordgo.Session) {
 	// logging depends on receiving a user's VoiceStateUpdate events in gateway
 	// order, so keep dispatch synchronous and rely on the DB advisory lock for
 	// per-user write serialization.
+	if discord.Client == nil {
+		discord.Client = http.DefaultClient
+	}
+	if discord.Client.Transport == nil {
+		discord.Client.Transport = http.DefaultTransport
+	}
+	discord.Client.Transport = otelhttp.NewTransport(discord.Client.Transport)
 	discord.SyncEvents = true
 	discord.Identify.Intents = discordgo.IntentsGuilds |
 		discordgo.IntentsGuildMessages |

@@ -84,7 +84,7 @@ func TestRecordCommandTriggered(t *testing.T) {
 		},
 	}
 
-	recordCommandTriggered(i)
+	recordCommandTriggered(context.Background(), i)
 
 	if len(store.triggered) != 1 {
 		t.Fatalf("expected one trigger record, got %d", len(store.triggered))
@@ -120,9 +120,9 @@ func TestRecordCommandResult(t *testing.T) {
 		},
 	}
 
-	recordCommandResult(i, "start", "started")
-	recordCommandResult(i, "success", "done")
-	recordCommandResult(i, "error", "failed")
+	recordCommandResult(context.Background(), i, "start", "started")
+	recordCommandResult(context.Background(), i, "success", "done")
+	recordCommandResult(context.Background(), i, "error", "failed")
 
 	if len(store.successes) != 1 || store.successes[0] != "abc" {
 		t.Fatalf("expected one success for interaction abc, got %+v", store.successes)
@@ -148,9 +148,9 @@ func TestAutocompleteNotAudited(t *testing.T) {
 		},
 	}
 
-	recordCommandTriggered(i)
-	recordCommandResult(i, "success", "done")
-	recordCommandResult(i, "error", "failed")
+	recordCommandTriggered(context.Background(), i)
+	recordCommandResult(context.Background(), i, "success", "done")
+	recordCommandResult(context.Background(), i, "error", "failed")
 
 	if len(store.triggered) != 0 || len(store.successes) != 0 || len(store.errors) != 0 {
 		t.Fatalf("expected autocomplete to skip audit, got triggered=%d success=%d error=%d", len(store.triggered), len(store.successes), len(store.errors))

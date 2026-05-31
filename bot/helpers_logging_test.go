@@ -5,6 +5,10 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 type recordingHandler struct {
@@ -37,8 +41,8 @@ func TestLogCommandStructuredFieldsAndLevels(t *testing.T) {
 	slog.SetDefault(slog.New(handler))
 	defer slog.SetDefault(orig)
 
-	logCommand(nil, "error", "failed operation: %s", "boom")
-	logCommand(nil, "success", "done")
+	logCommand(context.Background(), nil, "error", "failed operation: %s", "boom")
+	logCommand(context.Background(), nil, "success", "done")
 
 	if len(handler.records) != 2 {
 		t.Fatalf("expected 2 log records, got %d", len(handler.records))
@@ -62,5 +66,37 @@ func TestLogCommandStructuredFieldsAndLevels(t *testing.T) {
 	second := handler.records[1]
 	if second.Level != slog.LevelInfo {
 		t.Fatalf("expected second record level info, got %v", second.Level)
+	}
+}
+
+func TestLogCommandIncludesActiveTraceIdentifiers(t *testing.T) {
+	orig := slog.Default()
+	handler := &recordingHandler{}
+	slog.SetDefault(slog.New(handler))
+	defer slog.SetDefault(orig)
+
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+
+	ctx, span := otel.Tracer("livid-bot/bot/test").Start(context.Background(), "test")
+	defer span.End()
+
+	logCommand(ctx, nil, "success", "done")
+
+	if len(handler.records) != 1 {
+		t.Fatalf("expected one log record, got %d", len(handler.records))
+	}
+	attrs := map[string]any{}
+	handler.records[0].Attrs(func(a slog.Attr) bool {
+		attrs[a.Key] = a.Value.Any()
+		return true
+	})
+	if attrs["trace_id"] == nil || attrs["trace_id"] == "" {
+		t.Fatalf("expected trace_id attr, got %+v", attrs)
+	}
+	if attrs["span_id"] == nil || attrs["span_id"] == "" {
+		t.Fatalf("expected span_id attr, got %+v", attrs)
 	}
 }

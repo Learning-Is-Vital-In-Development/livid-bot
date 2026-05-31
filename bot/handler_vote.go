@@ -11,28 +11,27 @@ import (
 	"livid-bot/db"
 )
 
-func newVoteHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "vote command received")
+func newVoteHandler(suggestionRepo *db.SuggestionRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+		logCommand(ctx, i, "start", "vote command received")
 
-		ctx := context.Background()
 		period, err := suggestionRepo.GetActivePeriod(ctx)
 		if err != nil {
-			respondError(s, i, "제안 기간 조회에 실패했습니다.")
+			respondError(ctx, s, i, "제안 기간 조회에 실패했습니다.")
 			return
 		}
 		if period == nil {
-			respondError(s, i, "활성 제안 기간이 없습니다.")
+			respondError(ctx, s, i, "활성 제안 기간이 없습니다.")
 			return
 		}
 
 		suggestions, err := suggestionRepo.ListSuggestions(ctx, period.ID)
 		if err != nil {
-			respondError(s, i, "제안 목록 조회에 실패했습니다.")
+			respondError(ctx, s, i, "제안 목록 조회에 실패했습니다.")
 			return
 		}
 		if len(suggestions) == 0 {
-			respondError(s, i, "등록된 제안이 없습니다.")
+			respondError(ctx, s, i, "등록된 제안이 없습니다.")
 			return
 		}
 
@@ -65,24 +64,24 @@ func newVoteHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.S
 					},
 				},
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond vote menu: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond vote menu: %v", err)
 		}
 	}
 }
 
-func newVoteSelectHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "vote select received")
+func newVoteSelectHandler(suggestionRepo *db.SuggestionRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+		logCommand(ctx, i, "start", "vote select received")
 
 		data := i.MessageComponentData()
 		if len(data.Values) == 0 {
-			respondError(s, i, "선택된 값이 없습니다.")
+			respondError(ctx, s, i, "선택된 값이 없습니다.")
 			return
 		}
 		suggestionID, err := strconv.ParseInt(data.Values[0], 10, 64)
 		if err != nil {
-			respondError(s, i, "잘못된 제안 ID입니다.")
+			respondError(ctx, s, i, "잘못된 제안 ID입니다.")
 			return
 		}
 
@@ -91,43 +90,42 @@ func newVoteSelectHandler(suggestionRepo *db.SuggestionRepository) func(s *disco
 			userID = i.Member.User.ID
 		}
 		if userID == "" {
-			respondError(s, i, "사용자 정보를 확인할 수 없습니다.")
+			respondError(ctx, s, i, "사용자 정보를 확인할 수 없습니다.")
 			return
 		}
 
-		ctx := context.Background()
 		result, err := suggestionRepo.ToggleVote(ctx, suggestionID, userID)
 		if err != nil {
 			switch {
 			case errors.Is(err, db.ErrSuggestionClosed):
-				respondError(s, i, "이 제안은 더 이상 투표할 수 없습니다.")
+				respondError(ctx, s, i, "이 제안은 더 이상 투표할 수 없습니다.")
 			case errors.Is(err, db.ErrSuggestionNotFound):
-				respondError(s, i, "제안을 찾을 수 없습니다.")
+				respondError(ctx, s, i, "제안을 찾을 수 없습니다.")
 			default:
-				respondError(s, i, "투표 처리에 실패했습니다.")
+				respondError(ctx, s, i, "투표 처리에 실패했습니다.")
 			}
 			return
 		}
 
 		// Update the channel message vote count
 		if result.MessageID != "" && result.ChannelID != "" {
-			msg, fetchErr := s.ChannelMessage(result.ChannelID, result.MessageID)
+			msg, fetchErr := s.ChannelMessage(result.ChannelID, result.MessageID, discordgo.WithContext(ctx))
 			if fetchErr == nil {
 				oldContent := msg.Content
 				newContent := updateVoteLine(oldContent, result.VoteCount)
-				if _, editErr := s.ChannelMessageEdit(result.ChannelID, result.MessageID, newContent); editErr != nil {
-					logCommand(i, "warn", "failed to edit suggestion message: %v", editErr)
+				if _, editErr := s.ChannelMessageEdit(result.ChannelID, result.MessageID, newContent, discordgo.WithContext(ctx)); editErr != nil {
+					logCommand(ctx, i, "warn", "failed to edit suggestion message: %v", editErr)
 				}
 			} else {
-				logCommand(i, "warn", "failed to fetch suggestion message: %v", fetchErr)
+				logCommand(ctx, i, "warn", "failed to fetch suggestion message: %v", fetchErr)
 			}
 		}
 
 		// Auto-confirm at 3 votes
 		if result.JustConfirmed && result.ChannelID != "" {
 			confirmMsg := fmt.Sprintf("🎉 스터디 개설 확정!\n**%s** 이 %d표를 달성했습니다.\n운영자로 참여하실 분은 DM 또는 댓글로 알려주세요!", result.SuggestionTitle, db.SuggestionConfirmVoteThreshold)
-			if _, sendErr := s.ChannelMessageSend(result.ChannelID, confirmMsg); sendErr != nil {
-				logCommand(i, "warn", "failed to send confirm message: %v", sendErr)
+			if _, sendErr := s.ChannelMessageSend(result.ChannelID, confirmMsg, discordgo.WithContext(ctx)); sendErr != nil {
+				logCommand(ctx, i, "warn", "failed to send confirm message: %v", sendErr)
 			}
 		}
 
@@ -136,15 +134,15 @@ func newVoteSelectHandler(suggestionRepo *db.SuggestionRepository) func(s *disco
 			responseMsg = "투표 취소!"
 		}
 
-		logCommand(i, "done", "vote toggled suggestion=%d voted=%v count=%d", suggestionID, result.Voted, result.VoteCount)
+		logCommand(ctx, i, "done", "vote toggled suggestion=%d voted=%v count=%d", suggestionID, result.Voted, result.VoteCount)
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: responseMsg,
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond: %v", err)
 		}
 	}
 }

@@ -52,7 +52,7 @@ func getCommandAuditStore() CommandAuditStore {
 	return commandAuditStore
 }
 
-func recordCommandTriggered(i *discordgo.InteractionCreate) {
+func recordCommandTriggered(ctx context.Context, i *discordgo.InteractionCreate) {
 	if !isApplicationCommandInteraction(i) {
 		return
 	}
@@ -69,7 +69,7 @@ func recordCommandTriggered(i *discordgo.InteractionCreate) {
 	}
 
 	err = getCommandAuditStore().RecordTriggered(
-		context.Background(),
+		ctx,
 		interactionID,
 		interactionCommandName(i),
 		interactionUserID(i),
@@ -82,7 +82,7 @@ func recordCommandTriggered(i *discordgo.InteractionCreate) {
 	}
 }
 
-func recordCommandResult(i *discordgo.InteractionCreate, stage, message string) {
+func recordCommandResult(ctx context.Context, i *discordgo.InteractionCreate, stage, message string) {
 	if !isApplicationCommandInteraction(i) {
 		return
 	}
@@ -95,9 +95,9 @@ func recordCommandResult(i *discordgo.InteractionCreate, stage, message string) 
 	var err error
 	switch stage {
 	case "success":
-		err = getCommandAuditStore().RecordSuccess(context.Background(), interactionID)
+		err = getCommandAuditStore().RecordSuccess(ctx, interactionID)
 	case "error":
-		err = getCommandAuditStore().RecordError(context.Background(), interactionID, message)
+		err = getCommandAuditStore().RecordError(ctx, interactionID, message)
 	default:
 		return
 	}

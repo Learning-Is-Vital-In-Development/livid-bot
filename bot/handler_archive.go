@@ -27,16 +27,14 @@ type archiveResult struct {
 	Warning      string
 }
 
-func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID string, st study.Study) (archiveResult, error) {
-	ctx := context.Background()
-
-	channel, err := s.Channel(st.ChannelID)
+func archiveStudy(ctx context.Context, s *discordgo.Session, studyRepo *db.StudyRepository, guildID string, st study.Study) (archiveResult, error) {
+	channel, err := s.Channel(st.ChannelID, discordgo.WithContext(ctx))
 	if err != nil {
 		return archiveResult{}, fmt.Errorf("load channel %s for study %q: %w", st.ChannelID, st.Name, err)
 	}
 	originalParentID := channel.ParentID
 
-	allocator, err := newArchiveCategoryAllocator(s, guildID)
+	allocator, err := newArchiveCategoryAllocator(ctx, s, guildID)
 	if err != nil {
 		return archiveResult{}, fmt.Errorf("prepare archive category allocator: %w", err)
 	}
@@ -46,13 +44,13 @@ func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID s
 		return archiveResult{}, fmt.Errorf("reserve archive category: %w", err)
 	}
 
-	if _, err := s.ChannelEdit(st.ChannelID, &discordgo.ChannelEdit{ParentID: targetCategoryID}); err != nil {
+	if _, err := s.ChannelEdit(st.ChannelID, &discordgo.ChannelEdit{ParentID: targetCategoryID}, discordgo.WithContext(ctx)); err != nil {
 		return archiveResult{}, fmt.Errorf("move channel %s to %s: %w", st.ChannelID, targetCategoryName, err)
 	}
 	reservation.Commit()
 
 	if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
-		if rollbackErr := rollbackChannelParent(s, st.ChannelID, originalParentID); rollbackErr != nil {
+		if rollbackErr := rollbackChannelParent(ctx, s, st.ChannelID, originalParentID); rollbackErr != nil {
 			slog.Error("failed to rollback channel after DB failure", "channel_id", st.ChannelID, "study_name", st.Name, "error", rollbackErr)
 			return archiveResult{}, fmt.Errorf("archive study %q in DB (rollback also failed): %w", st.Name, err)
 		}
@@ -61,7 +59,7 @@ func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID s
 	}
 
 	warning := ""
-	if err := s.GuildRoleDelete(guildID, st.RoleID); err != nil {
+	if err := s.GuildRoleDelete(guildID, st.RoleID, discordgo.WithContext(ctx)); err != nil {
 		slog.Warn("failed to delete role for archived study", "role_id", st.RoleID, "study_name", st.Name, "error", err)
 		warning = "role deletion failed"
 	}
@@ -69,8 +67,8 @@ func archiveStudy(s *discordgo.Session, studyRepo *db.StudyRepository, guildID s
 	return archiveResult{CategoryName: targetCategoryName, Warning: warning}, nil
 }
 
-func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options := i.ApplicationCommandData().Options
 		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
 		for _, opt := range options {
@@ -78,25 +76,23 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 		}
 
 		channelID := optionMap["channel"].StringValue()
-		logCommand(i, "start", "archive-study requested channel=%s", channelID)
-		ctx := context.Background()
-
+		logCommand(ctx, i, "start", "archive-study requested channel=%s", channelID)
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
 			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
-			respondError(s, i, "No study found for the selected channel.")
+			respondError(ctx, s, i, "No study found for the selected channel.")
 			return
 		}
 
 		if st.Status != "active" {
-			respondError(s, i, fmt.Sprintf("Study %q is already archived.", st.Name))
+			respondError(ctx, s, i, fmt.Sprintf("Study %q is already archived.", st.Name))
 			return
 		}
 
-		result, err := archiveStudy(s, studyRepo, i.GuildID, st)
+		result, err := archiveStudy(ctx, s, studyRepo, i.GuildID, st)
 		if err != nil {
 			slog.Error("failed to archive study", "study_id", st.ID, "study_name", st.Name, "error", err)
-			respondError(s, i, fmt.Sprintf("Failed to archive study: %v", err))
+			respondError(ctx, s, i, fmt.Sprintf("Failed to archive study: %v", err))
 			return
 		}
 
@@ -110,37 +106,35 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(s *discordgo.Ses
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, result.CategoryName, warning),
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond archive-study success: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond archive-study success: %v", err)
 			return
 		}
-		logCommand(i, "success", "archived study id=%d name=%s channel=%s category=%s", st.ID, st.Name, st.ChannelID, result.CategoryName)
+		logCommand(ctx, i, "success", "archived study id=%d name=%s channel=%s category=%s", st.ID, st.Name, st.ChannelID, result.CategoryName)
 	}
 }
 
-func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ctx := context.Background()
+func newArchiveStudyAutocompleteHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		data := i.ApplicationCommandData()
 		query := focusedStringOptionValue(data.Options, "channel")
-		logCommand(i, "start", "archive-study autocomplete query=%q", query)
+		logCommand(ctx, i, "start", "archive-study autocomplete query=%q", query)
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
 			slog.Error("failed to load active studies for archive autocomplete", "error", err)
-			respondAutocomplete(s, i, nil)
+			respondAutocomplete(ctx, s, i, nil)
 			return
 		}
 
 		choices := buildArchiveStudyAutocompleteChoices(studies, query, archiveAutocompleteMaxChoices)
-		respondAutocomplete(s, i, choices)
-		logCommand(i, "success", "archive-study autocomplete choices=%d", len(choices))
+		respondAutocomplete(ctx, s, i, choices)
+		logCommand(ctx, i, "success", "archive-study autocomplete choices=%d", len(choices))
 	}
 }
 
-func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ctx := context.Background()
+func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options := i.ApplicationCommandData().Options
 		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
 		for _, opt := range options {
@@ -150,25 +144,25 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 		if opt, ok := optionMap["dry-run"]; ok {
 			dryRun = opt.BoolValue()
 		}
-		logCommand(i, "start", "archive-all requested dry_run=%t", dryRun)
+		logCommand(ctx, i, "start", "archive-all requested dry_run=%t", dryRun)
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
 			slog.Error("failed to find active studies", "error", err)
-			respondError(s, i, "Failed to load active studies.")
+			respondError(ctx, s, i, "Failed to load active studies.")
 			return
 		}
 
 		if len(studies) == 0 {
-			respondError(s, i, "No active studies to archive.")
+			respondError(ctx, s, i, "No active studies to archive.")
 			return
 		}
 
 		if dryRun {
-			allocator, err := newArchiveCategoryAllocator(s, i.GuildID)
+			allocator, err := newArchiveCategoryAllocator(ctx, s, i.GuildID)
 			if err != nil {
 				slog.Error("failed to prepare archive category allocator", "error", err)
-				respondError(s, i, "Failed to prepare archive category.")
+				respondError(ctx, s, i, "Failed to prepare archive category.")
 				return
 			}
 			studyNames := make([]string, len(studies))
@@ -182,11 +176,11 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 					Content: buildArchiveAllDryRunSummary(studyNames, plan),
 					Flags:   discordgo.MessageFlagsEphemeral,
 				},
-			}); err != nil {
-				logCommand(i, "error", "failed to respond archive-all dry-run: %v", err)
+			}, discordgo.WithContext(ctx)); err != nil {
+				logCommand(ctx, i, "error", "failed to respond archive-all dry-run: %v", err)
 				return
 			}
-			logCommand(i, "success", "archive-all dry-run studies=%d planned_categories=%d", len(studies), len(plan.CategoryUseCounts))
+			logCommand(ctx, i, "success", "archive-all dry-run studies=%d planned_categories=%d", len(studies), len(plan.CategoryUseCounts))
 			return
 		}
 
@@ -195,7 +189,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 		warnings := make([]string, 0)
 
 		for _, st := range studies {
-			result, err := archiveStudy(s, studyRepo, i.GuildID, st)
+			result, err := archiveStudy(ctx, s, studyRepo, i.GuildID, st)
 			if err != nil {
 				slog.Error("failed to archive study", "study_id", st.ID, "study_name", st.Name, "error", err)
 				failures = append(failures, archiveFailure{studyName: st.Name, reason: err.Error()})
@@ -214,16 +208,16 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(s *discordgo.Sessi
 			Data: &discordgo.InteractionResponseData{
 				Content: buildArchiveAllSummary(len(studies), successCount, failures, warnings),
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond archive-all summary: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond archive-all summary: %v", err)
 			return
 		}
-		logCommand(i, "success", "archive-all completed total=%d success=%d failures=%d warnings=%d", len(studies), successCount, len(failures), len(warnings))
+		logCommand(ctx, i, "success", "archive-all completed total=%d success=%d failures=%d warnings=%d", len(studies), successCount, len(failures), len(warnings))
 	}
 }
 
-func rollbackChannelParent(s *discordgo.Session, channelID, parentID string) error {
-	_, err := s.ChannelEdit(channelID, &discordgo.ChannelEdit{ParentID: parentID})
+func rollbackChannelParent(ctx context.Context, s *discordgo.Session, channelID, parentID string) error {
+	_, err := s.ChannelEdit(channelID, &discordgo.ChannelEdit{ParentID: parentID}, discordgo.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("rollback channel parent: %w", err)
 	}

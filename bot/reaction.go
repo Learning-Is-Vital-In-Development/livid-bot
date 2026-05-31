@@ -99,13 +99,16 @@ func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.Messa
 		return
 	}
 
-	if err := s.GuildMemberRoleAdd(r.GuildID, r.UserID, info.RoleID); err != nil {
+	ctx, span := startReactionSpan(context.Background(), "reaction.add", r.MessageReaction)
+	defer span.End()
+
+	if err := s.GuildMemberRoleAdd(r.GuildID, r.UserID, info.RoleID, discordgo.WithContext(ctx)); err != nil {
 		slog.Error("failed to add role to user", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "error", err)
 		return
 	}
 
 	// Get username for DB record
-	member, err := s.GuildMember(r.GuildID, r.UserID)
+	member, err := s.GuildMember(r.GuildID, r.UserID, discordgo.WithContext(ctx))
 	if err != nil {
 		slog.Error("failed to get member info", "guild_id", r.GuildID, "user_id", r.UserID, "error", err)
 		return
@@ -116,7 +119,6 @@ func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.Messa
 		username = member.Nick
 	}
 
-	ctx := context.Background()
 	if err := h.memberRepo.AddMember(ctx, info.StudyID, r.UserID, username); err != nil {
 		slog.Error("failed to record member join", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
 	}
@@ -134,12 +136,15 @@ func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.Me
 		return
 	}
 
-	if err := s.GuildMemberRoleRemove(r.GuildID, r.UserID, info.RoleID); err != nil {
+	ctx, span := startReactionSpan(context.Background(), "reaction.remove", r.MessageReaction)
+	defer span.End()
+
+	if err := s.GuildMemberRoleRemove(r.GuildID, r.UserID, info.RoleID, discordgo.WithContext(ctx)); err != nil {
 		slog.Error("failed to remove role from user", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "error", err)
 		return
 	}
 
-	member, err := s.GuildMember(r.GuildID, r.UserID)
+	member, err := s.GuildMember(r.GuildID, r.UserID, discordgo.WithContext(ctx))
 	if err != nil {
 		slog.Error("failed to get member info", "guild_id", r.GuildID, "user_id", r.UserID, "error", err)
 		return
@@ -150,7 +155,6 @@ func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.Me
 		username = member.Nick
 	}
 
-	ctx := context.Background()
 	if err := h.memberRepo.RemoveMember(ctx, info.StudyID, r.UserID); err != nil {
 		slog.Error("failed to record member leave", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
 	}

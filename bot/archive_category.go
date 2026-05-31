@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"sort"
@@ -31,6 +32,7 @@ type archiveCategorySlot struct {
 }
 
 type archiveCategoryAllocator struct {
+	ctx             context.Context
 	session         *discordgo.Session
 	guildID         string
 	slots           []archiveCategorySlot
@@ -49,8 +51,11 @@ type archiveDryRunPlan struct {
 	CreatedCategories []string
 }
 
-func newArchiveCategoryAllocator(s *discordgo.Session, guildID string) (*archiveCategoryAllocator, error) {
-	channels, err := s.GuildChannels(guildID)
+func newArchiveCategoryAllocator(ctx context.Context, s *discordgo.Session, guildID string) (*archiveCategoryAllocator, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	channels, err := s.GuildChannels(guildID, discordgo.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("load guild channels: %w", err)
 	}
@@ -92,6 +97,7 @@ func newArchiveCategoryAllocator(s *discordgo.Session, guildID string) (*archive
 	})
 
 	return &archiveCategoryAllocator{
+		ctx:             ctx,
 		session:         s,
 		guildID:         guildID,
 		slots:           slots,
@@ -132,7 +138,7 @@ func (a *archiveCategoryAllocator) createSlot(number int) (*archiveCategorySlot,
 	category, err := a.session.GuildChannelCreateComplex(a.guildID, discordgo.GuildChannelCreateData{
 		Name: name,
 		Type: discordgo.ChannelTypeGuildCategory,
-	})
+	}, discordgo.WithContext(a.ctx))
 	if err != nil {
 		return nil, fmt.Errorf("create category %q: %w", name, err)
 	}
@@ -161,6 +167,7 @@ func (a *archiveCategoryAllocator) ensureReadOnly(slot *archiveCategorySlot) err
 		discordgo.PermissionOverwriteTypeRole,
 		allow,
 		deny,
+		discordgo.WithContext(a.ctx),
 	); err != nil {
 		return fmt.Errorf("set read-only on %s: %w", slot.Name, err)
 	}

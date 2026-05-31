@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,8 +17,8 @@ const (
 	helpEmbedColor                  = 0x5865F2
 )
 
-func handleHelp(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	logCommand(i, "start", "help command invoked")
+func handleHelp(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	logCommand(ctx, i, "start", "help command invoked")
 
 	memberPermissions, hasMember := helpMemberPermissions(i)
 	visibleCommands := visibleCommandsForMember(commands, memberPermissions, hasMember)
@@ -29,7 +30,7 @@ func handleHelp(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	} else {
 		cmd := findVisibleCommandByName(visibleCommands, selectedCommand)
 		if cmd == nil {
-			respondError(s, i, fmt.Sprintf("`/%s` 명령어를 찾을 수 없거나 사용할 권한이 없습니다.", selectedCommand))
+			respondError(ctx, s, i, fmt.Sprintf("`/%s` 명령어를 찾을 수 없거나 사용할 권한이 없습니다.", selectedCommand))
 			return
 		}
 		embed = buildHelpCommandDetailEmbed(cmd)
@@ -38,22 +39,22 @@ func handleHelp(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: newHelpResponseData(embed),
-	}); err != nil {
-		logCommand(i, "error", "failed to respond help command: %v", err)
+	}, discordgo.WithContext(ctx)); err != nil {
+		logCommand(ctx, i, "error", "failed to respond help command: %v", err)
 		return
 	}
 
-	logCommand(i, "success", "help response sent visible_commands=%d selected=%q", len(visibleCommands), selectedCommand)
+	logCommand(ctx, i, "success", "help response sent visible_commands=%d selected=%q", len(visibleCommands), selectedCommand)
 }
 
-func handleHelpAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func handleHelpAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 	memberPermissions, hasMember := helpMemberPermissions(i)
 	query := focusedStringOptionValue(i.ApplicationCommandData().Options, "command")
 	visibleCommands := visibleCommandsForMember(commands, memberPermissions, hasMember)
 	choices := buildHelpCommandAutocompleteChoices(visibleCommands, query, helpAutocompleteMaxChoices)
-	logCommand(i, "start", "help autocomplete query=%q", query)
-	respondAutocomplete(s, i, choices)
-	logCommand(i, "success", "help autocomplete choices=%d", len(choices))
+	logCommand(ctx, i, "start", "help autocomplete query=%q", query)
+	respondAutocomplete(ctx, s, i, choices)
+	logCommand(ctx, i, "success", "help autocomplete choices=%d", len(choices))
 }
 
 func newHelpResponseData(embed *discordgo.MessageEmbed) *discordgo.InteractionResponseData {

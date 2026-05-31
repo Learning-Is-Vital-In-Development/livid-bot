@@ -10,14 +10,14 @@ import (
 	"livid-bot/db"
 )
 
-func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "suggest-start command received")
+func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+		logCommand(ctx, i, "start", "suggest-start command received")
 
 		// Check 운영진 role
-		roles, err := s.GuildRoles(i.GuildID)
+		roles, err := s.GuildRoles(i.GuildID, discordgo.WithContext(ctx))
 		if err != nil {
-			respondError(s, i, "서버 역할 조회에 실패했습니다.")
+			respondError(ctx, s, i, "서버 역할 조회에 실패했습니다.")
 			return
 		}
 		var adminRoleID string
@@ -28,7 +28,7 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *dis
 			}
 		}
 		if adminRoleID == "" {
-			respondError(s, i, "운영진 역할을 찾을 수 없습니다.")
+			respondError(ctx, s, i, "운영진 역할을 찾을 수 없습니다.")
 			return
 		}
 		hasRole := false
@@ -41,7 +41,7 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *dis
 			}
 		}
 		if !hasRole {
-			respondError(s, i, "운영진만 사용할 수 있는 명령어입니다.")
+			respondError(ctx, s, i, "운영진만 사용할 수 있는 명령어입니다.")
 			return
 		}
 
@@ -57,19 +57,17 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *dis
 		switch {
 		case err == nil:
 		case errors.Is(err, errSuggestionDeadlinePast):
-			respondError(s, i, "마감일은 미래 날짜여야 합니다.")
+			respondError(ctx, s, i, "마감일은 미래 날짜여야 합니다.")
 			return
 		default:
-			respondError(s, i, fmt.Sprintf("마감일 형식이 올바르지 않습니다 (YYYY-MM-DD): %s", closesAtStr))
+			respondError(ctx, s, i, fmt.Sprintf("마감일 형식이 올바르지 않습니다 (YYYY-MM-DD): %s", closesAtStr))
 			return
 		}
 
-		ctx := context.Background()
-
 		// Find 운영진-자유채팅 channel
-		channels, err := s.GuildChannels(i.GuildID)
+		channels, err := s.GuildChannels(i.GuildID, discordgo.WithContext(ctx))
 		if err != nil {
-			respondError(s, i, "채널 목록 조회에 실패했습니다.")
+			respondError(ctx, s, i, "채널 목록 조회에 실패했습니다.")
 			return
 		}
 		var targetChannelID string
@@ -80,7 +78,7 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *dis
 			}
 		}
 		if targetChannelID == "" {
-			respondError(s, i, "운영진-자유채팅 채널을 찾을 수 없습니다.")
+			respondError(ctx, s, i, "운영진-자유채팅 채널을 찾을 수 없습니다.")
 			return
 		}
 
@@ -90,47 +88,46 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(s *dis
 			if errors.Is(err, db.ErrActiveSuggestionPeriodExists) {
 				existing, getErr := suggestionRepo.GetActivePeriod(ctx)
 				if getErr == nil && existing != nil {
-					respondError(s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", suggestionDateLabel(existing.ClosesAt)))
+					respondError(ctx, s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", suggestionDateLabel(existing.ClosesAt)))
 					return
 				}
-				respondError(s, i, "이미 활성 제안 기간이 있습니다.")
+				respondError(ctx, s, i, "이미 활성 제안 기간이 있습니다.")
 				return
 			}
-			respondError(s, i, "제안 기간 생성에 실패했습니다.")
+			respondError(ctx, s, i, "제안 기간 생성에 실패했습니다.")
 			return
 		}
 
 		// Post announcement
 		content := buildSuggestionAnnouncement(period.ClosesAt)
-		if _, err := s.ChannelMessageSend(targetChannelID, content); err != nil {
-			logCommand(i, "warn", "failed to send announcement: %v", err)
+		if _, err := s.ChannelMessageSend(targetChannelID, content, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "warn", "failed to send announcement: %v", err)
 		}
 
-		logCommand(i, "done", "suggestion period created id=%d closes_at=%s", period.ID, suggestionDateLabel(period.ClosesAt))
+		logCommand(ctx, i, "done", "suggestion period created id=%d closes_at=%s", period.ID, suggestionDateLabel(period.ClosesAt))
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf("✅ 스터디 제안 기간이 시작되었습니다. 마감: %s", suggestionDateLabel(period.ClosesAt)),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond: %v", err)
 		}
 	}
 }
 
-func newSuggestHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "suggest command received")
+func newSuggestHandler(suggestionRepo *db.SuggestionRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+		logCommand(ctx, i, "start", "suggest command received")
 
-		ctx := context.Background()
 		period, err := suggestionRepo.GetActivePeriod(ctx)
 		if err != nil {
-			respondError(s, i, "제안 기간 조회에 실패했습니다.")
+			respondError(ctx, s, i, "제안 기간 조회에 실패했습니다.")
 			return
 		}
 		if period == nil {
-			respondError(s, i, "현재 활성 제안 기간이 없습니다.")
+			respondError(ctx, s, i, "현재 활성 제안 기간이 없습니다.")
 			return
 		}
 
@@ -160,28 +157,27 @@ func newSuggestHandler(suggestionRepo *db.SuggestionRepository) func(s *discordg
 					}},
 				},
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond modal: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond modal: %v", err)
 		}
 	}
 }
 
-func newSuggestModalHandler(suggestionRepo *db.SuggestionRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(i, "start", "suggest modal submit received")
+func newSuggestModalHandler(suggestionRepo *db.SuggestionRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+		logCommand(ctx, i, "start", "suggest modal submit received")
 
-		ctx := context.Background()
 		period, err := suggestionRepo.GetActivePeriod(ctx)
 		if err != nil {
-			respondError(s, i, "제안 기간 조회에 실패했습니다.")
+			respondError(ctx, s, i, "제안 기간 조회에 실패했습니다.")
 			return
 		}
 		if period == nil {
-			respondError(s, i, "현재 활성 제안 기간이 없습니다.")
+			respondError(ctx, s, i, "현재 활성 제안 기간이 없습니다.")
 			return
 		}
 		if period.ChannelID == "" {
-			respondError(s, i, "제안 채널 정보를 확인할 수 없습니다.")
+			respondError(ctx, s, i, "제안 채널 정보를 확인할 수 없습니다.")
 			return
 		}
 
@@ -192,39 +188,39 @@ func newSuggestModalHandler(suggestionRepo *db.SuggestionRepository) func(s *dis
 		targetChannelID := period.ChannelID
 		content := buildSuggestionMessage(title, description, 0)
 
-		msg, err := s.ChannelMessageSend(targetChannelID, content)
+		msg, err := s.ChannelMessageSend(targetChannelID, content, discordgo.WithContext(ctx))
 		if err != nil {
-			logCommand(i, "error", "failed to send suggestion message: %v", err)
-			respondError(s, i, "제안 메시지 게시에 실패했습니다.")
+			logCommand(ctx, i, "error", "failed to send suggestion message: %v", err)
+			respondError(ctx, s, i, "제안 메시지 게시에 실패했습니다.")
 			return
 		}
 
 		suggestion, err := suggestionRepo.CreateSuggestion(ctx, period.ID, title, description, msg.ID, targetChannelID)
 		if err != nil {
-			if deleteErr := s.ChannelMessageDelete(targetChannelID, msg.ID); deleteErr != nil {
-				logCommand(i, "warn", "failed to delete suggestion message after DB error: %v", deleteErr)
+			if deleteErr := s.ChannelMessageDelete(targetChannelID, msg.ID, discordgo.WithContext(ctx)); deleteErr != nil {
+				logCommand(ctx, i, "warn", "failed to delete suggestion message after DB error: %v", deleteErr)
 			}
 			if errors.Is(err, db.ErrSuggestionClosed) {
-				respondError(s, i, "제안 기간이 마감되었습니다.")
+				respondError(ctx, s, i, "제안 기간이 마감되었습니다.")
 				return
 			}
-			respondError(s, i, "제안 등록에 실패했습니다.")
+			respondError(ctx, s, i, "제안 등록에 실패했습니다.")
 			return
 		}
 
-		if err := s.MessageReactionAdd(targetChannelID, msg.ID, "🚀"); err != nil {
-			logCommand(i, "warn", "failed to add reaction: %v", err)
+		if err := s.MessageReactionAdd(targetChannelID, msg.ID, "🚀", discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "warn", "failed to add reaction: %v", err)
 		}
 
-		logCommand(i, "done", "suggestion created id=%d", suggestion.ID)
+		logCommand(ctx, i, "done", "suggestion created id=%d", suggestion.ID)
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: "제안이 등록되었습니다!",
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond: %v", err)
 		}
 	}
 }

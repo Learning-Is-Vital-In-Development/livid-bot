@@ -10,26 +10,25 @@ import (
 	"livid-bot/study"
 )
 
-func newStudiesHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newStudiesHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		branch, status := parseStudiesFilters(i.ApplicationCommandData().Options)
-		logCommand(i, "start", "studies requested branch=%q status=%q", branch, status)
+		logCommand(ctx, i, "start", "studies requested branch=%q status=%q", branch, status)
 
 		if branch != "" && !isValidBranch(branch) {
-			respondError(s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
+			respondError(ctx, s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
 			return
 		}
 
 		if status != "active" && status != "archived" {
-			respondError(s, i, "Invalid status. Use one of: active, archived.")
+			respondError(ctx, s, i, "Invalid status. Use one of: active, archived.")
 			return
 		}
 
-		ctx := context.Background()
 		studies, err := studyRepo.FindByFilters(ctx, branch, status)
 		if err != nil {
-			logCommand(i, "error", "failed to load studies branch=%q status=%q err=%v", branch, status, err)
-			respondError(s, i, "Failed to load studies.")
+			logCommand(ctx, i, "error", "failed to load studies branch=%q status=%q err=%v", branch, status, err)
+			respondError(ctx, s, i, "Failed to load studies.")
 			return
 		}
 
@@ -40,11 +39,11 @@ func newStudiesHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session,
 				Content: content,
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond studies command: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond studies command: %v", err)
 			return
 		}
-		logCommand(i, "success", "studies returned count=%d branch=%q status=%q", len(studies), branch, status)
+		logCommand(ctx, i, "success", "studies returned count=%d branch=%q status=%q", len(studies), branch, status)
 	}
 }
 

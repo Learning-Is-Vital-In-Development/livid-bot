@@ -11,11 +11,10 @@ import (
 
 const recruitBranchAutocompleteMaxChoices = 25
 
-func newRecruitBranchAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ctx := context.Background()
+func newRecruitBranchAutocompleteHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		query := focusedStringOptionValue(i.ApplicationCommandData().Options, "branch")
-		logCommand(i, "start", "recruit branch autocomplete query=%q", query)
+		logCommand(ctx, i, "start", "recruit branch autocomplete query=%q", query)
 
 		branches, err := studyRepo.FindDistinctActiveBranches(ctx)
 		if err != nil {
@@ -26,7 +25,7 @@ func newRecruitBranchAutocompleteHandler(studyRepo *db.StudyRepository) func(s *
 
 		choices := buildRecruitBranchAutocompleteChoices(branches, query, recruitBranchAutocompleteMaxChoices)
 		respondRecruitBranchAutocomplete(s, i, choices)
-		logCommand(i, "success", "recruit branch autocomplete choices=%d", len(choices))
+		logCommand(ctx, i, "success", "recruit branch autocomplete choices=%d", len(choices))
 	}
 }
 

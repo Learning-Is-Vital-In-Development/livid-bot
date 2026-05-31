@@ -11,8 +11,8 @@ import (
 	"livid-bot/study"
 )
 
-func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options := i.ApplicationCommandData().Options
 		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
 		for _, opt := range options {
@@ -21,24 +21,22 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 
 		opt, ok := optionMap["channel"]
 		if !ok {
-			respondError(s, i, "Missing required option: channel.")
+			respondError(ctx, s, i, "Missing required option: channel.")
 			return
 		}
 		channelID := opt.StringValue()
-		logCommand(i, "start", "members requested channel=%s", channelID)
-		ctx := context.Background()
-
+		logCommand(ctx, i, "start", "members requested channel=%s", channelID)
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
 			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
-			respondError(s, i, "No study found for the selected channel.")
+			respondError(ctx, s, i, "No study found for the selected channel.")
 			return
 		}
 
 		members, err := memberRepo.FindActiveByStudyID(ctx, st.ID)
 		if err != nil {
 			slog.Error("failed to find members for study", "study_id", st.ID, "study_name", st.Name, "error", err)
-			respondError(s, i, "Failed to load study members.")
+			respondError(ctx, s, i, "Failed to load study members.")
 			return
 		}
 
@@ -49,31 +47,30 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 				Content: content,
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
-		}); err != nil {
-			logCommand(i, "error", "failed to respond members command: %v", err)
+		}, discordgo.WithContext(ctx)); err != nil {
+			logCommand(ctx, i, "error", "failed to respond members command: %v", err)
 			return
 		}
-		logCommand(i, "success", "members returned count=%d study=%s", len(members), st.Name)
+		logCommand(ctx, i, "success", "members returned count=%d study=%s", len(members), st.Name)
 	}
 }
 
-func newMembersAutocompleteHandler(studyRepo *db.StudyRepository) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ctx := context.Background()
+func newMembersAutocompleteHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		data := i.ApplicationCommandData()
 		query := focusedStringOptionValue(data.Options, "channel")
-		logCommand(i, "start", "members autocomplete query=%q", query)
+		logCommand(ctx, i, "start", "members autocomplete query=%q", query)
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
 			slog.Error("failed to load active studies for members autocomplete", "error", err)
-			respondAutocomplete(s, i, nil)
+			respondAutocomplete(ctx, s, i, nil)
 			return
 		}
 
 		choices := buildArchiveStudyAutocompleteChoices(studies, query, archiveAutocompleteMaxChoices)
-		respondAutocomplete(s, i, choices)
-		logCommand(i, "success", "members autocomplete choices=%d", len(choices))
+		respondAutocomplete(ctx, s, i, choices)
+		logCommand(ctx, i, "success", "members autocomplete choices=%d", len(choices))
 	}
 }
 

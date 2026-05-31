@@ -9,6 +9,7 @@ import (
 	"livid-bot/bot"
 	"livid-bot/db"
 	"livid-bot/internal/logging"
+	"livid-bot/internal/telemetry"
 )
 
 func main() {
@@ -23,12 +24,22 @@ func main() {
 		}
 	}()
 
+	ctx := context.Background()
+	telemetryShutdown, err := telemetry.Configure(ctx)
+	if err != nil {
+		slog.Error("failed to configure telemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := telemetryShutdown(context.Background()); err != nil {
+			slog.Warn("failed to shutdown telemetry", "error", err)
+		}
+	}()
+
 	token := requireEnv("DISCORD_BOT_TOKEN")
 	appID := requireEnv("DISCORD_APPLICATION_ID")
 	guildID := requireEnv("DISCORD_GUILD_ID")
 	databaseURL := requireEnv("DATABASE_URL")
-
-	ctx := context.Background()
 
 	pool, err := db.NewPool(ctx, databaseURL)
 	if err != nil {

@@ -30,13 +30,21 @@ services:
       DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       DATABASE_URL: postgres://livid:livid@db:5432/livid?sslmode=disable
+      APP_ENV: ${APP_ENV:-development}
       LOG_FORMAT: "json"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FILE_ENABLED: "true"
       LOG_FILE_PATH: /var/log/livid-bot/bot.log
       LOG_FILE_MAX_SIZE_MB: "10"
       LOG_FILE_MAX_BACKUPS: "900"
       LOG_FILE_MAX_AGE_DAYS: "730"
       LOG_FILE_COMPRESS: "true"
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-livid-bot}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.namespace=livid-bot,deployment.environment=development}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     volumes:
       - ./logs:/var/log/livid-bot
     logging:

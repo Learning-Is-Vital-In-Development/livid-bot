@@ -1,33 +1,34 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-func respondError(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	logCommand(i, "error", "%s", message)
+func respondError(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	logCommand(ctx, i, "error", "%s", message)
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: message,
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
-	}); err != nil {
-		logCommand(i, "error", "failed to respond error message: %v", err)
+	}, discordgo.WithContext(ctx)); err != nil {
+		logCommand(ctx, i, "error", "failed to respond error message: %v", err)
 	}
 }
 
-func respondAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) {
+func respondAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) {
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
 		Data: &discordgo.InteractionResponseData{
 			Choices: choices,
 		},
-	}); err != nil {
-		logCommand(i, "error", "failed to respond autocomplete: %v", err)
+	}, discordgo.WithContext(ctx)); err != nil {
+		logCommand(ctx, i, "error", "failed to respond autocomplete: %v", err)
 	}
 }
 
@@ -39,7 +40,7 @@ func int64Ptr(v int64) *int64 {
 	return &v
 }
 
-func logCommand(i *discordgo.InteractionCreate, stage, format string, args ...interface{}) {
+func logCommand(ctx context.Context, i *discordgo.InteractionCreate, stage, format string, args ...interface{}) {
 	commandName := interactionCommandName(i)
 	guildID := "unknown"
 	userID := "unknown"
@@ -62,14 +63,15 @@ func logCommand(i *discordgo.InteractionCreate, stage, format string, args ...in
 		"guild", guildID,
 		"user", userID,
 	}
+	attrs = append(attrs, traceLogAttrs(ctx)...)
 
 	if stage == "error" {
 		slog.Error(message, attrs...)
-		recordCommandResult(i, stage, message)
+		recordCommandResult(ctx, i, stage, message)
 		return
 	}
 	slog.Info(message, attrs...)
-	recordCommandResult(i, stage, message)
+	recordCommandResult(ctx, i, stage, message)
 }
 
 func interactionCommandName(i *discordgo.InteractionCreate) string {
