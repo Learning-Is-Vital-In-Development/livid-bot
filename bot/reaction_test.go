@@ -3,7 +3,7 @@ package bot
 import "testing"
 
 func TestReactionHandlerTrackAndLookup(t *testing.T) {
-	h := NewReactionHandler(nil)
+	h := NewReactionHandler()
 
 	h.Track("msg-1", map[string]emojiStudyInfo{
 		"1️⃣": {RoleID: "role-1", StudyID: 101},
@@ -26,7 +26,7 @@ func TestReactionHandlerTrackAndLookup(t *testing.T) {
 }
 
 func TestReactionHandlerUntrack(t *testing.T) {
-	h := NewReactionHandler(nil)
+	h := NewReactionHandler()
 
 	h.Track("msg-1", map[string]emojiStudyInfo{
 		"1️⃣": {RoleID: "role-1", StudyID: 101},
@@ -52,7 +52,7 @@ func TestReactionHandlerUntrack(t *testing.T) {
 }
 
 func TestReactionHandlerUntrackEmpty(t *testing.T) {
-	h := NewReactionHandler(nil)
+	h := NewReactionHandler()
 
 	h.Track("msg-1", map[string]emojiStudyInfo{
 		"1️⃣": {RoleID: "role-1", StudyID: 101},
@@ -67,7 +67,7 @@ func TestReactionHandlerUntrackEmpty(t *testing.T) {
 }
 
 func TestReactionHandlerTrackReplacesMessageMapping(t *testing.T) {
-	h := NewReactionHandler(nil)
+	h := NewReactionHandler()
 
 	h.Track("msg-1", map[string]emojiStudyInfo{
 		"1️⃣": {RoleID: "role-1", StudyID: 101},

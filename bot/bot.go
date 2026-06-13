@@ -46,31 +46,32 @@ func Run(cfg Config) error {
 	}
 
 	// Initialize reaction handler and load existing mappings from DB
-	reactionHandler := NewReactionHandler(cfg.MemberRepo)
+	reactionHandler := NewReactionHandler()
 	if err := reactionHandler.LoadFromDB(cfg.RecruitRepo); err != nil {
 		slog.Warn("failed to load reaction mappings", "error", err)
 	}
 
 	commandHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
-		"help":          handleHelp,
-		"create-study":  newCreateStudyHandler(cfg.StudyRepo),
-		"recruit":       newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
-		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
-		"studies":       newStudiesHandler(cfg.StudyRepo),
-		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
-		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
-		"study-start":   newStudyStartHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
-		"suggest-start": newSuggestStartHandler(cfg.SuggestionRepo),
-		"suggest":       newSuggestHandler(cfg.SuggestionRepo),
-		"vote":          newVoteHandler(cfg.SuggestionRepo),
-		"voice-stats":   newVoiceStatsHandler(cfg.VoiceRepo),
+		"help":           handleHelp,
+		"create-study":   newCreateStudyHandler(cfg.StudyRepo),
+		"recruit":        newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
+		"archive-study":  newArchiveStudyHandler(cfg.StudyRepo),
+		"studies":        newStudiesHandler(cfg.StudyRepo),
+		"members":        newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
+		"archive-all":    newArchiveAllHandler(cfg.StudyRepo),
+		"recruit-status": newRecruitStatusHandler(cfg.RecruitRepo),
+		"recruit-close":  newRecruitCloseHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
+		"suggest-start":  newSuggestStartHandler(cfg.SuggestionRepo),
+		"suggest":        newSuggestHandler(cfg.SuggestionRepo),
+		"voice-stats":    newVoiceStatsHandler(cfg.VoiceRepo),
 	}
 	autocompleteHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
-		"help":          handleHelpAutocomplete,
-		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
-		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
-		"recruit":       newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
-		"study-start":   newStudyStartAutocompleteHandler(cfg.StudyRepo),
+		"help":           handleHelpAutocomplete,
+		"archive-study":  newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
+		"members":        newMembersAutocompleteHandler(cfg.StudyRepo),
+		"recruit":        newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
+		"recruit-status": newRecruitCloseAutocompleteHandler(cfg.StudyRepo),
+		"recruit-close":  newRecruitCloseAutocompleteHandler(cfg.StudyRepo),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -98,12 +99,6 @@ func Run(cfg Config) error {
 			switch customID {
 			case "suggest_modal":
 				newSuggestModalHandler(cfg.SuggestionRepo)(ctx, s, i)
-			}
-		case discordgo.InteractionMessageComponent:
-			customID := i.MessageComponentData().CustomID
-			switch customID {
-			case "vote_select":
-				newVoteSelectHandler(cfg.SuggestionRepo)(ctx, s, i)
 			}
 		}
 	})

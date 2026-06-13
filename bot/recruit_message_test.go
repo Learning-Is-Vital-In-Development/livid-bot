@@ -34,4 +34,10 @@ func TestBuildRecruitMessage(t *testing.T) {
 	if !strings.Contains(msg, "📅 모집 기간: 2026-03-01 ~ 2026-03-10") {
 		t.Fatalf("expected date range in message, got: %s", msg)
 	}
+	if strings.Contains(msg, "이모지 반응으로 스터디 역할이 자동 부여됩니다") {
+		t.Fatalf("did not expect role assignment to be promised during recruitment, got: %s", msg)
+	}
+	if !strings.Contains(msg, "마감 후 최소 인원을 충족한 스터디에 역할이 부여됩니다") {
+		t.Fatalf("expected delayed role assignment guidance, got: %s", msg)
+	}
 }

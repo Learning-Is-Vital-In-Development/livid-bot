@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"livid-bot/study"
@@ -16,7 +17,16 @@ func NewRecruitRepository(pool *pgxpool.Pool) *RecruitRepository {
 	return &RecruitRepository{pool: pool}
 }
 
-func (r *RecruitRepository) SaveRecruitMessage(ctx context.Context, messageID, channelID string, mappings []study.RecruitMapping) error {
+type SaveRecruitMessageParams struct {
+	MessageID string
+	ChannelID string
+	Branch    string
+	OpensAt   time.Time
+	ClosesAt  time.Time
+	Mappings  []study.RecruitMapping
+}
+
+func (r *RecruitRepository) SaveRecruitMessage(ctx context.Context, params SaveRecruitMessageParams) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -27,16 +37,16 @@ func (r *RecruitRepository) SaveRecruitMessage(ctx context.Context, messageID, c
 
 	var recruitID int64
 	err = tx.QueryRow(ctx,
-		`INSERT INTO recruit_messages (message_id, channel_id)
-		 VALUES ($1, $2)
+		`INSERT INTO recruit_messages (message_id, channel_id, branch, opens_at, closes_at)
+		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id`,
-		messageID, channelID,
+		params.MessageID, params.ChannelID, params.Branch, params.OpensAt, params.ClosesAt,
 	).Scan(&recruitID)
 	if err != nil {
 		return fmt.Errorf("insert recruit message: %w", err)
 	}
 
-	for _, m := range mappings {
+	for _, m := range params.Mappings {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO recruit_message_mappings (recruit_message_id, emoji, study_id, role_id)
 			 VALUES ($1, $2, $3, $4)`,
@@ -80,47 +90,64 @@ func (r *RecruitRepository) LoadAllMappings(ctx context.Context) ([]EmojiRoleMap
 	return mappings, rows.Err()
 }
 
-type RecruitStudyInfo struct {
-	StudyID   int64
-	StudyName string
-	ChannelID string
-	RoleID    string
+type OpenRecruitMapping struct {
+	RecruitMessageID string
+	RecruitChannelID string
+	Branch           string
+	OpensAt          time.Time
+	ClosesAt         time.Time
+	Emoji            string
+	StudyID          int64
+	StudyName        string
+	StudyChannelID   string
+	RoleID           string
 }
 
-func (r *RecruitRepository) FindOpenMappingsByBranch(ctx context.Context, branch string) ([]string, []RecruitStudyInfo, error) {
+func (r *RecruitRepository) FindOpenRecruitMappingsByBranch(ctx context.Context, branch string) ([]OpenRecruitMapping, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT DISTINCT rm.message_id, s.id, s.name, s.channel_id, s.role_id
+		`SELECT rm.message_id,
+		        rm.channel_id,
+		        COALESCE(rm.branch, s.branch),
+		        COALESCE(rm.opens_at, rm.created_at),
+		        COALESCE(rm.closes_at, rm.created_at),
+		        rmm.emoji,
+		        s.id,
+		        s.name,
+		        s.channel_id,
+		        rmm.role_id
 		 FROM recruit_messages rm
 		 JOIN recruit_message_mappings rmm ON rm.id = rmm.recruit_message_id
 		 JOIN studies s ON s.id = rmm.study_id
-		 WHERE s.branch = $1 AND s.status = 'active' AND rm.closed_at IS NULL
-		 ORDER BY s.id`, branch)
+		 WHERE s.branch = $1
+		   AND s.status = 'active'
+		   AND rm.closed_at IS NULL
+		   AND (rm.branch IS NULL OR rm.branch = $1)
+		 ORDER BY s.id, rm.created_at, rmm.emoji`, branch)
 	if err != nil {
-		return nil, nil, fmt.Errorf("find open mappings by branch: %w", err)
+		return nil, fmt.Errorf("find open recruit mappings by branch: %w", err)
 	}
 	defer rows.Close()
 
-	messageIDSet := make(map[string]struct{})
-	var messageIDs []string
-	studyIDSet := make(map[int64]struct{})
-	var studies []RecruitStudyInfo
-
+	var mappings []OpenRecruitMapping
 	for rows.Next() {
-		var msgID string
-		var info RecruitStudyInfo
-		if err := rows.Scan(&msgID, &info.StudyID, &info.StudyName, &info.ChannelID, &info.RoleID); err != nil {
-			return nil, nil, fmt.Errorf("scan open mapping: %w", err)
+		var m OpenRecruitMapping
+		if err := rows.Scan(
+			&m.RecruitMessageID,
+			&m.RecruitChannelID,
+			&m.Branch,
+			&m.OpensAt,
+			&m.ClosesAt,
+			&m.Emoji,
+			&m.StudyID,
+			&m.StudyName,
+			&m.StudyChannelID,
+			&m.RoleID,
+		); err != nil {
+			return nil, fmt.Errorf("scan open recruit mapping: %w", err)
 		}
-		if _, exists := messageIDSet[msgID]; !exists {
-			messageIDSet[msgID] = struct{}{}
-			messageIDs = append(messageIDs, msgID)
-		}
-		if _, exists := studyIDSet[info.StudyID]; !exists {
-			studyIDSet[info.StudyID] = struct{}{}
-			studies = append(studies, info)
-		}
+		mappings = append(mappings, m)
 	}
-	return messageIDs, studies, rows.Err()
+	return mappings, rows.Err()
 }
 
 func (r *RecruitRepository) CloseByBranch(ctx context.Context, branch string) (int64, error) {

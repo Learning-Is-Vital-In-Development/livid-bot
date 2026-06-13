@@ -56,11 +56,12 @@ func buildSuggestionAnnouncement(closesAt time.Time) string {
 }
 
 func buildSuggestionMessage(title, description string, voteCount int) string {
+	_ = voteCount
 	if strings.TrimSpace(description) != "" {
-		return fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s\n설명: %s\n\n🚀 %d표", title, description, voteCount)
+		return fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s\n설명: %s", title, description)
 	}
 
-	return fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s\n\n🚀 %d표", title, voteCount)
+	return fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s", title)
 }
 
 func findSuggestionDiscussionChannel(channels []*discordgo.Channel) *discordgo.Channel {

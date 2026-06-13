@@ -299,8 +299,10 @@ func localizedCommandDescription(cmd *discordgo.ApplicationCommand) string {
 		return "role 을 사용하여 스터디에 속한 멤버 목록을 조회"
 	case "voice-stats":
 		return "음성채널별 출석/체류 시간 통계 조회(관리자 전용)"
-	case "study-start":
-		return "분기 모집 종료 및 스터디 시작 공지"
+	case "recruit-status":
+		return "현재 모집 이모지 반응 기준 신청 현황 조회"
+	case "recruit-close":
+		return "분기 모집 종료, 최종 신청자 role 부여, 미달 스터디 아카이브"
 	case "archive-all":
 		return "활성(active) 스터디 전체 아카이브"
 	default:

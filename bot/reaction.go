@@ -15,15 +15,13 @@ type emojiStudyInfo struct {
 }
 
 type ReactionHandler struct {
-	mu         sync.RWMutex
-	mappings   map[string]map[string]emojiStudyInfo // messageID -> emoji -> info
-	memberRepo *db.MemberRepository
+	mu       sync.RWMutex
+	mappings map[string]map[string]emojiStudyInfo // messageID -> emoji -> info
 }
 
-func NewReactionHandler(memberRepo *db.MemberRepository) *ReactionHandler {
+func NewReactionHandler() *ReactionHandler {
 	return &ReactionHandler{
-		mappings:   make(map[string]map[string]emojiStudyInfo),
-		memberRepo: memberRepo,
+		mappings: make(map[string]map[string]emojiStudyInfo),
 	}
 }
 
@@ -102,28 +100,10 @@ func (h *ReactionHandler) OnReactionAdd(s *discordgo.Session, r *discordgo.Messa
 	ctx, span := startReactionSpan(context.Background(), "reaction.add", r.MessageReaction)
 	defer span.End()
 
-	if err := s.GuildMemberRoleAdd(r.GuildID, r.UserID, info.RoleID, discordgo.WithContext(ctx)); err != nil {
-		slog.Error("failed to add role to user", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "error", err)
-		return
-	}
-
-	// Get username for DB record
-	member, err := s.GuildMember(r.GuildID, r.UserID, discordgo.WithContext(ctx))
-	if err != nil {
-		slog.Error("failed to get member info", "guild_id", r.GuildID, "user_id", r.UserID, "error", err)
-		return
-	}
-
-	username := member.User.Username
-	if member.Nick != "" {
-		username = member.Nick
-	}
-
-	if err := h.memberRepo.AddMember(ctx, info.StudyID, r.UserID, username); err != nil {
-		slog.Error("failed to record member join", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
-	}
-
-	slog.Info("user joined study", "username", username, "user_id", r.UserID, "study_id", info.StudyID)
+	// Recruitment reactions are sign-up intent only. Roles and study_members rows
+	// are finalized in /recruit-close from the message's final reaction state.
+	slog.Info("user expressed study recruitment interest", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "study_id", info.StudyID)
+	_ = ctx
 }
 
 func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.MessageReactionRemove) {
@@ -139,27 +119,10 @@ func (h *ReactionHandler) OnReactionRemove(s *discordgo.Session, r *discordgo.Me
 	ctx, span := startReactionSpan(context.Background(), "reaction.remove", r.MessageReaction)
 	defer span.End()
 
-	if err := s.GuildMemberRoleRemove(r.GuildID, r.UserID, info.RoleID, discordgo.WithContext(ctx)); err != nil {
-		slog.Error("failed to remove role from user", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "error", err)
-		return
-	}
-
-	member, err := s.GuildMember(r.GuildID, r.UserID, discordgo.WithContext(ctx))
-	if err != nil {
-		slog.Error("failed to get member info", "guild_id", r.GuildID, "user_id", r.UserID, "error", err)
-		return
-	}
-
-	username := member.User.Username
-	if member.Nick != "" {
-		username = member.Nick
-	}
-
-	if err := h.memberRepo.RemoveMember(ctx, info.StudyID, r.UserID); err != nil {
-		slog.Error("failed to record member leave", "study_id", info.StudyID, "user_id", r.UserID, "error", err)
-	}
-
-	slog.Info("user left study", "username", username, "user_id", r.UserID, "study_id", info.StudyID)
+	// Removing the reaction cancels sign-up intent until /recruit-close collects
+	// the final reaction state; no role/member mutation happens here.
+	slog.Info("user removed study recruitment interest", "guild_id", r.GuildID, "role_id", info.RoleID, "user_id", r.UserID, "study_id", info.StudyID)
+	_ = ctx
 }
 
 func (h *ReactionHandler) lookup(messageID, emoji string) (emojiStudyInfo, bool) {

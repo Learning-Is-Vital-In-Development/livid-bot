@@ -70,7 +70,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Conte
 		// Create Discord role
 		role, err := s.GuildRoleCreate(guildID, &discordgo.RoleParams{
 			Name:        name,
-			Mentionable: boolPtr(true),
+			Mentionable: boolPtr(false),
 		}, discordgo.WithContext(ctx))
 		if err != nil {
 			logCommand(ctx, i, "error", "failed to create role name=%s err=%v", name, err)

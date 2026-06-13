@@ -9,14 +9,14 @@ import (
 
 func TestVisibleCommandsForMemberNonAdmin(t *testing.T) {
 	visible := visibleCommandsForMember(commands, 0, true)
-	if len(visible) != 4 {
-		t.Fatalf("expected 4 visible commands (/help, /members, /suggest, /vote), got %d", len(visible))
+	if len(visible) != 3 {
+		t.Fatalf("expected 3 visible commands (/help, /members, /suggest), got %d", len(visible))
 	}
 	if visible[0].Name != "help" || visible[1].Name != "members" {
 		t.Fatalf("unexpected visible commands: %s, %s", visible[0].Name, visible[1].Name)
 	}
-	if visible[2].Name != "suggest" || visible[3].Name != "vote" {
-		t.Fatalf("unexpected visible commands: %s, %s", visible[2].Name, visible[3].Name)
+	if visible[2].Name != "suggest" {
+		t.Fatalf("unexpected visible command: %s", visible[2].Name)
 	}
 }
 
@@ -107,19 +107,19 @@ func TestBuildHelpCommandAutocompleteChoices(t *testing.T) {
 			Description: "List active members of a study",
 		},
 		{
-			Name:        "study-start",
-			Description: "Close recruitment and start studies for a branch",
+			Name:        "recruit-close",
+			Description: "Close recruitment and start or archive studies for a branch",
 		},
 	}
 
-	choices := buildHelpCommandAutocompleteChoices(cmds, "study", 25)
+	choices := buildHelpCommandAutocompleteChoices(cmds, "close", 25)
 	if len(choices) != 1 {
 		t.Fatalf("expected one choice, got %d", len(choices))
 	}
-	if choices[0].Value != "study-start" {
-		t.Fatalf("expected study-start value, got %v", choices[0].Value)
+	if choices[0].Value != "recruit-close" {
+		t.Fatalf("expected recruit-close value, got %v", choices[0].Value)
 	}
-	if choices[0].Name != "study-start" {
+	if choices[0].Name != "recruit-close" {
 		t.Fatalf("expected choice label with command name, got %q", choices[0].Name)
 	}
 }

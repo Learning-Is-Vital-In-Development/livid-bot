@@ -26,10 +26,12 @@ func TestDiscordRESTCallsUseActiveContext(t *testing.T) {
 		"GuildMemberRoleRemove":     true,
 		"GuildRoleCreate":           true,
 		"GuildRoleDelete":           true,
+		"GuildRoleEdit":             true,
 		"GuildRoles":                true,
 		"InteractionRespond":        true,
 		"InteractionResponseEdit":   true,
 		"MessageReactionAdd":        true,
+		"MessageReactions":          true,
 	}
 
 	files := []string{
@@ -38,13 +40,15 @@ func TestDiscordRESTCallsUseActiveContext(t *testing.T) {
 		"handler_create_study.go",
 		"handler_help.go",
 		"handler_members.go",
+		"handler_recruit_close.go",
 		"handler_recruit.go",
+		"handler_recruit_status.go",
 		"handler_studies.go",
 		"handler_study_start.go",
 		"handler_suggest.go",
-		"handler_vote.go",
 		"helpers.go",
 		"reaction.go",
+		"recruit_reactions.go",
 		"voice_attendance.go",
 	}
 

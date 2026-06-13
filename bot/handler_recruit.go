@@ -93,7 +93,14 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 			}
 		}
 
-		if err := recruitRepo.SaveRecruitMessage(ctx, msg.ID, channelID, mappings); err != nil {
+		if err := recruitRepo.SaveRecruitMessage(ctx, db.SaveRecruitMessageParams{
+			MessageID: msg.ID,
+			ChannelID: channelID,
+			Branch:    branch,
+			OpensAt:   fromDate,
+			ClosesAt:  toDate,
+			Mappings:  mappings,
+		}); err != nil {
 			logCommand(ctx, i, "error", "failed to save recruit message mapping message=%s err=%v", msg.ID, err)
 			if delErr := s.ChannelMessageDelete(channelID, msg.ID, discordgo.WithContext(ctx)); delErr != nil {
 				logCommand(ctx, i, "error", "failed to delete recruit message after DB failure message=%s err=%v", msg.ID, delErr)
@@ -143,7 +150,8 @@ func buildRecruitMessage(branch string, studies []study.Study, from, to time.Tim
 	fmt.Fprintf(&b, "\n📅 모집 기간: %s ~ %s\n",
 		from.Format("2006-01-02"),
 		to.Format("2006-01-02"))
-	b.WriteString("\n이모지 반응으로 스터디 역할이 자동 부여됩니다.")
+	b.WriteString("\n마감 전까지 이모지를 제거하면 신청이 취소됩니다.")
+	b.WriteString("\n마감 후 최소 인원을 충족한 스터디에 역할이 부여됩니다.")
 
 	return b.String()
 }

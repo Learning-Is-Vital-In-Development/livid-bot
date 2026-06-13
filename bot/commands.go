@@ -164,8 +164,22 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
-		Name:                     "study-start",
-		Description:              "Close recruitment and start studies for a branch",
+		Name:                     "recruit-status",
+		Description:              "Show current recruitment signup counts for a branch",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:         discordgo.ApplicationCommandOptionString,
+				Name:         "branch",
+				Description:  "Target branch (YY-Q)",
+				Required:     true,
+				Autocomplete: true,
+			},
+		},
+	},
+	{
+		Name:                     "recruit-close",
+		Description:              "Close recruitment and start or archive studies for a branch",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 		Options: []*discordgo.ApplicationCommandOption{
 			{
@@ -206,9 +220,5 @@ var commands = []*discordgo.ApplicationCommand{
 	{
 		Name:        "suggest",
 		Description: "익명으로 스터디를 제안합니다",
-	},
-	{
-		Name:        "vote",
-		Description: "스터디 제안에 투표합니다",
 	},
 }

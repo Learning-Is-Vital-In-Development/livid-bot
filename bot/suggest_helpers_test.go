@@ -48,28 +48,16 @@ func TestBuildSuggestionMessage(t *testing.T) {
 	if !strings.Contains(withDescription, "설명: 동시성 중심") {
 		t.Fatalf("expected description in message, got: %s", withDescription)
 	}
-	if !strings.Contains(withDescription, "🚀 2표") {
-		t.Fatalf("expected vote count in message, got: %s", withDescription)
+	if strings.Contains(withDescription, "표") {
+		t.Fatalf("did not expect vote count in suggestion message after /vote removal, got: %s", withDescription)
 	}
 
 	withoutDescription := buildSuggestionMessage("Rust 스터디", "", 0)
 	if strings.Contains(withoutDescription, "설명:") {
 		t.Fatalf("did not expect description line for empty description, got: %s", withoutDescription)
 	}
-	if !strings.Contains(withoutDescription, "🚀 0표") {
-		t.Fatalf("expected zero vote count in message, got: %s", withoutDescription)
-	}
-}
-
-func TestUpdateVoteLine(t *testing.T) {
-	updated := updateVoteLine("제안 본문\n🚀 1표", 3)
-	if !strings.Contains(updated, "🚀 3표") {
-		t.Fatalf("expected updated vote line, got: %s", updated)
-	}
-
-	appended := updateVoteLine("제안 본문", 1)
-	if !strings.HasSuffix(appended, "\n🚀 1표") {
-		t.Fatalf("expected vote line to be appended, got: %s", appended)
+	if strings.Contains(withoutDescription, "🚀 0표") {
+		t.Fatalf("did not expect zero vote count in suggestion message after /vote removal, got: %s", withoutDescription)
 	}
 }
 
