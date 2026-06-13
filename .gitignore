@@ -29,3 +29,4 @@ livid-bot
 logs/
 
 .claude/settings.local.json
+.hermes/
