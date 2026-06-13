@@ -1,10 +1,13 @@
 package bot
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func TestParseSuggestionDeadlineUsesKSTEndOfDay(t *testing.T) {
@@ -68,4 +71,117 @@ func TestUpdateVoteLine(t *testing.T) {
 	if !strings.HasSuffix(appended, "\n🚀 1표") {
 		t.Fatalf("expected vote line to be appended, got: %s", appended)
 	}
+}
+
+func TestFindSuggestionDiscussionChannelUsesFixedDiscussionChannel(t *testing.T) {
+	channels := []*discordgo.Channel{
+		{ID: "old", Name: "운영진-자유채팅", Type: discordgo.ChannelTypeGuildText},
+		{ID: "target", Name: suggestionDiscussionChannelName, Type: discordgo.ChannelTypeGuildForum},
+	}
+
+	got := findSuggestionDiscussionChannel(channels)
+	if got == nil {
+		t.Fatal("expected discussion channel to be found")
+	}
+	if got.ID != "target" {
+		t.Fatalf("expected fixed discussion channel ID target, got %s", got.ID)
+	}
+}
+
+func TestPublishSuggestionMessageCreatesForumPostForForumChannel(t *testing.T) {
+	client := &fakeSuggestionDiscordClient{
+		channels: map[string]*discordgo.Channel{
+			"forum": {ID: "forum", Type: discordgo.ChannelTypeGuildForum},
+		},
+		forumThread: &discordgo.Channel{ID: "thread", LastMessageID: "starter-message"},
+	}
+
+	ref, err := publishSuggestionMessage(context.Background(), client, "forum", "Go 스터디", "동시성 중심", 0)
+	if err != nil {
+		t.Fatalf("expected forum post publish to succeed, got error: %v", err)
+	}
+
+	if client.sentMessageChannelID != "" {
+		t.Fatalf("expected not to send a regular channel message, sent to %s", client.sentMessageChannelID)
+	}
+	if client.forumThreadChannelID != "forum" {
+		t.Fatalf("expected forum thread to be created in forum channel, got %s", client.forumThreadChannelID)
+	}
+	if client.forumThreadName != "Go 스터디" {
+		t.Fatalf("expected forum thread name to use suggestion title, got %q", client.forumThreadName)
+	}
+	if !strings.Contains(client.forumThreadMessageContent, "**주제**: Go 스터디") {
+		t.Fatalf("expected forum starter message to contain suggestion content, got %q", client.forumThreadMessageContent)
+	}
+	if ref.ChannelID != "thread" || ref.MessageID != "starter-message" {
+		t.Fatalf("expected returned ref to point at forum thread starter, got channel=%s message=%s", ref.ChannelID, ref.MessageID)
+	}
+}
+
+func TestPublishSuggestionMessageSendsRegularMessageForTextChannel(t *testing.T) {
+	client := &fakeSuggestionDiscordClient{
+		channels: map[string]*discordgo.Channel{
+			"text": {ID: "text", Type: discordgo.ChannelTypeGuildText},
+		},
+		sentMessage: &discordgo.Message{ID: "message"},
+	}
+
+	ref, err := publishSuggestionMessage(context.Background(), client, "text", "Rust 스터디", "", 0)
+	if err != nil {
+		t.Fatalf("expected text channel publish to succeed, got error: %v", err)
+	}
+
+	if client.sentMessageChannelID != "text" {
+		t.Fatalf("expected regular message to be sent to text channel, got %s", client.sentMessageChannelID)
+	}
+	if client.forumThreadChannelID != "" {
+		t.Fatalf("expected not to create forum thread, created in %s", client.forumThreadChannelID)
+	}
+	if ref.ChannelID != "text" || ref.MessageID != "message" {
+		t.Fatalf("expected returned ref to point at text message, got channel=%s message=%s", ref.ChannelID, ref.MessageID)
+	}
+}
+
+type fakeSuggestionDiscordClient struct {
+	channels map[string]*discordgo.Channel
+
+	sentMessageChannelID string
+	sentMessageContent   string
+	sentMessage          *discordgo.Message
+
+	forumThreadChannelID      string
+	forumThreadName           string
+	forumThreadMessageContent string
+	forumThread               *discordgo.Channel
+}
+
+func (f *fakeSuggestionDiscordClient) Channel(channelID string, options ...discordgo.RequestOption) (*discordgo.Channel, error) {
+	ch := f.channels[channelID]
+	if ch == nil {
+		return nil, errors.New("channel not found")
+	}
+	return ch, nil
+}
+
+func (f *fakeSuggestionDiscordClient) ChannelMessageSend(channelID, content string, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+	f.sentMessageChannelID = channelID
+	f.sentMessageContent = content
+	if f.sentMessage == nil {
+		return nil, errors.New("sent message not configured")
+	}
+	return f.sentMessage, nil
+}
+
+func (f *fakeSuggestionDiscordClient) ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Channel, error) {
+	f.forumThreadChannelID = channelID
+	if threadData != nil {
+		f.forumThreadName = threadData.Name
+	}
+	if messageData != nil {
+		f.forumThreadMessageContent = messageData.Content
+	}
+	if f.forumThread == nil {
+		return nil, errors.New("forum thread not configured")
+	}
+	return f.forumThread, nil
 }

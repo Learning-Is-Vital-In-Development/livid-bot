@@ -64,23 +64,18 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(ctx co
 			return
 		}
 
-		// Find 운영진-자유채팅 channel
+		// Find the fixed suggestion discussion channel.
 		channels, err := s.GuildChannels(i.GuildID, discordgo.WithContext(ctx))
 		if err != nil {
 			respondError(ctx, s, i, "채널 목록 조회에 실패했습니다.")
 			return
 		}
-		var targetChannelID string
-		for _, ch := range channels {
-			if ch.Name == "운영진-자유채팅" {
-				targetChannelID = ch.ID
-				break
-			}
-		}
-		if targetChannelID == "" {
-			respondError(ctx, s, i, "운영진-자유채팅 채널을 찾을 수 없습니다.")
+		targetChannel := findSuggestionDiscussionChannel(channels)
+		if targetChannel == nil {
+			respondError(ctx, s, i, fmt.Sprintf("%s 채널을 찾을 수 없습니다.", suggestionDiscussionChannelName))
 			return
 		}
+		targetChannelID := targetChannel.ID
 
 		// Create period
 		period, err := suggestionRepo.CreatePeriod(ctx, targetChannelID, closesAt)
@@ -99,8 +94,7 @@ func newSuggestStartHandler(suggestionRepo *db.SuggestionRepository) func(ctx co
 		}
 
 		// Post announcement
-		content := buildSuggestionAnnouncement(period.ClosesAt)
-		if _, err := s.ChannelMessageSend(targetChannelID, content, discordgo.WithContext(ctx)); err != nil {
+		if _, err := publishSuggestionAnnouncement(ctx, s, targetChannelID, period.ClosesAt); err != nil {
 			logCommand(ctx, i, "warn", "failed to send announcement: %v", err)
 		}
 
@@ -186,18 +180,16 @@ func newSuggestModalHandler(suggestionRepo *db.SuggestionRepository) func(ctx co
 		description := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
 
 		targetChannelID := period.ChannelID
-		content := buildSuggestionMessage(title, description, 0)
-
-		msg, err := s.ChannelMessageSend(targetChannelID, content, discordgo.WithContext(ctx))
+		postRef, err := publishSuggestionMessage(ctx, s, targetChannelID, title, description, 0)
 		if err != nil {
-			logCommand(ctx, i, "error", "failed to send suggestion message: %v", err)
+			logCommand(ctx, i, "error", "failed to publish suggestion message: %v", err)
 			respondError(ctx, s, i, "제안 메시지 게시에 실패했습니다.")
 			return
 		}
 
-		suggestion, err := suggestionRepo.CreateSuggestion(ctx, period.ID, title, description, msg.ID, targetChannelID)
+		suggestion, err := suggestionRepo.CreateSuggestion(ctx, period.ID, title, description, postRef.MessageID, postRef.ChannelID)
 		if err != nil {
-			if deleteErr := s.ChannelMessageDelete(targetChannelID, msg.ID, discordgo.WithContext(ctx)); deleteErr != nil {
+			if deleteErr := s.ChannelMessageDelete(postRef.ChannelID, postRef.MessageID, discordgo.WithContext(ctx)); deleteErr != nil {
 				logCommand(ctx, i, "warn", "failed to delete suggestion message after DB error: %v", deleteErr)
 			}
 			if errors.Is(err, db.ErrSuggestionClosed) {
@@ -208,7 +200,7 @@ func newSuggestModalHandler(suggestionRepo *db.SuggestionRepository) func(ctx co
 			return
 		}
 
-		if err := s.MessageReactionAdd(targetChannelID, msg.ID, "🚀", discordgo.WithContext(ctx)); err != nil {
+		if err := s.MessageReactionAdd(postRef.ChannelID, postRef.MessageID, "🚀", discordgo.WithContext(ctx)); err != nil {
 			logCommand(ctx, i, "warn", "failed to add reaction: %v", err)
 		}
 
