@@ -78,6 +78,13 @@ func interactionCommandName(i *discordgo.InteractionCreate) string {
 	if i == nil {
 		return "unknown"
 	}
+	if i.Type == discordgo.InteractionModalSubmit {
+		data := i.ModalSubmitData()
+		if data.CustomID != "" {
+			return data.CustomID
+		}
+		return "modal_submit"
+	}
 	if i.Type != discordgo.InteractionApplicationCommand && i.Type != discordgo.InteractionApplicationCommandAutocomplete {
 		return "unknown"
 	}
