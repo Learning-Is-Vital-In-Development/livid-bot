@@ -161,6 +161,8 @@ jobs:
     steps:
       - name: Checkout app
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Derive image metadata
         id: image
@@ -215,6 +217,7 @@ jobs:
           path: infrastructure
 
       - name: Update livid-bot image tag in GitOps repo
+        id: gitops
         working-directory: infrastructure
         env:
           IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
@@ -232,6 +235,7 @@ jobs:
           in_image = False
           saw_repository = False
           saw_tag = False
+          old_tag = ""
 
           for idx, line in enumerate(lines):
               if line == "image:":
@@ -246,18 +250,25 @@ jobs:
                   lines[idx] = f"  repository: {repository}"
                   saw_repository = True
               elif stripped.startswith("tag:"):
+                  old_tag = stripped.split(":", 1)[1].strip().strip('"').strip("'")
                   lines[idx] = f'  tag: "{tag}"'
                   saw_tag = True
 
           if not (saw_repository and saw_tag):
               raise SystemExit(f"failed to update repository/tag in {path}")
           path.write_text("\n".join(lines) + "\n")
+
+          output_path = os.environ.get("GITHUB_OUTPUT")
+          if output_path:
+              with open(output_path, "a", encoding="utf-8") as output:
+                  print(f"old_tag={old_tag}", file=output)
           PY
 
       - name: Commit and push GitOps image bump
         working-directory: infrastructure
         env:
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          OLD_IMAGE_TAG: ${{ steps.gitops.outputs.old_tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -270,6 +281,31 @@ jobs:
 
           git diff --check -- "${INFRA_VALUES_FILE}"
           git add "${INFRA_VALUES_FILE}"
-          git commit -m "deploy(livid-bot): ${IMAGE_TAG}"
+
+          release_notes_file="$(mktemp)"
+          app_repo="${GITHUB_WORKSPACE}"
+
+          if [ -n "${OLD_IMAGE_TAG}" ] && git -C "${app_repo}" cat-file -e "${OLD_IMAGE_TAG}^{commit}" 2>/dev/null; then
+            git -C "${app_repo}" log --no-merges --pretty=format:'- %s (%h)' "${OLD_IMAGE_TAG}..${GITHUB_SHA}" > "${release_notes_file}"
+          else
+            {
+              echo "- ${GITHUB_SHA::12}: $(git -C "${app_repo}" show -s --format=%s "${GITHUB_SHA}")"
+              if [ -n "${OLD_IMAGE_TAG}" ]; then
+                echo "- Note: previous deployed tag ${OLD_IMAGE_TAG} was not found in checkout history."
+              fi
+            } > "${release_notes_file}"
+          fi
+
+          if [ ! -s "${release_notes_file}" ]; then
+            echo "- No app commits found between ${OLD_IMAGE_TAG:-<unknown>} and ${GITHUB_SHA::12}." > "${release_notes_file}"
+          fi
+
+          release_notes_limited="$(head -n 20 "${release_notes_file}")"
+
+          git commit \
+            -m "deploy(livid-bot): ${IMAGE_TAG}" \
+            -m "Release notes:" \
+            -m "${release_notes_limited}" \
+            -m "App commit: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           git pull --rebase origin main
           git push origin HEAD:main
