@@ -20,6 +20,19 @@ type testDatabase struct {
 
 func newTestDatabase(t *testing.T) *testDatabase {
 	t.Helper()
+	td := newEmptyTestDatabase(t)
+	ctx := context.Background()
+
+	if err := Migrate(ctx, td.Pool); err != nil {
+		td.Pool.Close()
+		t.Fatalf("migrate test database: %v", err)
+	}
+
+	return td
+}
+
+func newEmptyTestDatabase(t *testing.T) *testDatabase {
+	t.Helper()
 
 	baseURL := os.Getenv("TEST_DATABASE_URL")
 	if baseURL == "" {
@@ -44,13 +57,6 @@ func newTestDatabase(t *testing.T) *testDatabase {
 		_, _ = adminPool.Exec(ctx, "DROP DATABASE "+pgx.Identifier{databaseName}.Sanitize()+" WITH (FORCE)")
 		adminPool.Close()
 		t.Fatalf("connect test pool: %v", err)
-	}
-
-	if err := Migrate(ctx, pool); err != nil {
-		pool.Close()
-		_, _ = adminPool.Exec(ctx, "DROP DATABASE "+pgx.Identifier{databaseName}.Sanitize()+" WITH (FORCE)")
-		adminPool.Close()
-		t.Fatalf("migrate test database: %v", err)
 	}
 
 	t.Cleanup(func() {

@@ -297,8 +297,6 @@ func localizedCommandDescription(cmd *discordgo.ApplicationCommand) string {
 		return "분기/상태 기준 스터디 목록 조회"
 	case "members":
 		return "role 을 사용하여 스터디에 속한 멤버 목록을 조회"
-	case "voice-stats":
-		return "음성채널별 출석/체류 시간 통계 조회(관리자 전용)"
 	case "recruit-status":
 		return "현재 모집 이모지 반응 기준 신청 현황 조회"
 	case "recruit-close":

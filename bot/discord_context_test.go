@@ -49,7 +49,6 @@ func TestDiscordRESTCallsUseActiveContext(t *testing.T) {
 		"helpers.go",
 		"reaction.go",
 		"recruit_reactions.go",
-		"voice_attendance.go",
 	}
 
 	fset := token.NewFileSet()

@@ -50,26 +50,6 @@ func startReactionSpan(ctx context.Context, eventName string, r *discordgo.Messa
 	return tracer.Start(ctx, "discord."+eventName, trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attrs...))
 }
 
-func startVoiceStateSpan(ctx context.Context, v *discordgo.VoiceStateUpdate) (context.Context, trace.Span) {
-	tracer := otel.Tracer(botTracerName)
-	attrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "discord"),
-		attribute.String("discord.event_type", "voice_state.update"),
-	}
-	if v != nil {
-		if v.GuildID != "" {
-			attrs = append(attrs, attribute.String("discord.guild_id", v.GuildID))
-		}
-		if v.UserID != "" {
-			attrs = append(attrs, attribute.String("discord.user_id", v.UserID))
-		}
-		if v.ChannelID != "" {
-			attrs = append(attrs, attribute.String("discord.voice.channel_id", v.ChannelID))
-		}
-	}
-	return tracer.Start(ctx, "discord.voice_state.update", trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attrs...))
-}
-
 func interactionSpanName(i *discordgo.InteractionCreate) (spanName, eventType string) {
 	if i == nil {
 		return "discord.interaction.unknown", "unknown"

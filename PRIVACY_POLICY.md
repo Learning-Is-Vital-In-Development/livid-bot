@@ -10,11 +10,10 @@ When you use the Bot, we may process:
 
 - Discord identifiers (such as server ID, channel ID, user ID, role ID, and message/interaction ID);
 - command-related metadata (such as command name, options, execution status, and timestamps);
-- voice attendance session metadata (such as voice channel ID, user ID, join/leave timestamps, and derived attendance duration);
 - study management data created through bot features (such as study name, branch, status, and related IDs);
 - operational logs needed for debugging, reliability, and abuse prevention.
 
-The Bot does not intentionally collect sensitive personal information. The Bot does not collect voice audio content, speaking activity, or mute/deaf/video/stream state for attendance features.
+The Bot does not intentionally collect sensitive personal information.
 
 ## 2. How We Use Information
 
@@ -34,7 +33,7 @@ We do not sell personal data. Data may be shared only when necessary with:
 
 ## 4. Data Retention
 
-Data is retained only as long as needed for service operation, auditing, security, attendance/statistics, and legal compliance. Retention periods may vary by data type and operational necessity. Voice attendance storage is minimized to IDs and timestamps; display names for attendance statistics are resolved from Discord at response time and are not stored as attendance records.
+Data is retained only as long as needed for service operation, auditing, security, and legal compliance. Retention periods may vary by data type and operational necessity.
 
 ## 5. Your Choices and Rights
 
