@@ -155,7 +155,7 @@ jobs:
       contents: read
       packages: write
     env:
-      INFRA_REPO: songkg7/infrastructure
+      INFRA_REPO: anor-labs/infrastructure
       INFRA_VALUES_FILE: deploy/k8s/apps/livid-bot/chart/values.yaml
 
     steps:
