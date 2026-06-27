@@ -3,6 +3,7 @@ package bot
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var branchPattern = regexp.MustCompile(`^[0-9]{2}-[1-4]$`)
@@ -26,18 +27,26 @@ func buildStudyChannelName(branch, name string) string {
 
 func sanitizeChannelName(name string) string {
 	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, " ", "-")
 
+	const maxChannelNameRunes = 100
 	var b strings.Builder
+	runeCount := 0
 	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			b.WriteRune(r)
+		switch {
+		case unicode.IsSpace(r):
+			r = '-'
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_':
+			// Keep Discord-friendly letters and numbers from any script.
+		default:
+			continue
 		}
+
+		if runeCount >= maxChannelNameRunes {
+			break
+		}
+		b.WriteRune(r)
+		runeCount++
 	}
 
-	result := b.String()
-	if len(result) > 100 {
-		result = result[:100]
-	}
-	return result
+	return b.String()
 }

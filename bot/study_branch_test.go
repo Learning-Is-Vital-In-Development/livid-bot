@@ -1,6 +1,10 @@
 package bot
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
 
 func TestIsValidBranch(t *testing.T) {
 	testCases := []struct {
@@ -51,7 +55,9 @@ func TestBuildStudyChannelName(t *testing.T) {
 		{branch: "26-2", name: "algo", expected: "26-2-algo"},
 		{branch: "26-1", name: "System Design", expected: "26-1-system-design"},
 		{branch: "26-3", name: "C++", expected: "26-3-c"},
-		{branch: "26-2", name: "네트워크", expected: "26-2-"},
+		{branch: "26-2", name: "네트워크", expected: "26-2-네트워크"},
+		{branch: "26-2", name: "자바 스터디", expected: "26-2-자바-스터디"},
+		{branch: "26-2", name: "Go 언어", expected: "26-2-go-언어"},
 	}
 
 	for _, tc := range testCases {
@@ -63,9 +69,20 @@ func TestBuildStudyChannelName(t *testing.T) {
 }
 
 func TestSanitizeChannelName_TruncatesAt100(t *testing.T) {
-	long := "26-2-" + string(make([]byte, 200))
+	long := "26-2-" + strings.Repeat("a", 200)
 	result := sanitizeChannelName(long)
 	if len(result) > 100 {
 		t.Fatalf("expected max 100 chars, got %d", len(result))
+	}
+}
+
+func TestSanitizeChannelName_TruncatesUnicodeSafely(t *testing.T) {
+	long := strings.Repeat("가", 120)
+	result := sanitizeChannelName(long)
+	if !utf8.ValidString(result) {
+		t.Fatalf("expected valid UTF-8 after truncation, got %q", result)
+	}
+	if runeCount := utf8.RuneCountInString(result); runeCount > 100 {
+		t.Fatalf("expected max 100 runes, got %d", runeCount)
 	}
 }
