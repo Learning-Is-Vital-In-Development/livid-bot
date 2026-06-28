@@ -35,8 +35,8 @@ func newStudiesHandler(studyRepo *db.StudyRepository) func(ctx context.Context, 
 			return
 		}
 
-		content := buildStudiesResponse(branch, status, studies)
-		if err := editOriginalInteractionResponse(ctx, s, i, content); err != nil {
+		embed := buildStudiesEmbed(branch, status, studies)
+		if err := editOriginalInteractionResponseEmbed(ctx, s, i, embed); err != nil {
 			logCommand(ctx, i, "error", "failed to respond studies command: %v", err)
 			return
 		}
@@ -60,21 +60,61 @@ func parseStudiesFilters(options []*discordgo.ApplicationCommandInteractionDataO
 	return branch, status
 }
 
-func buildStudiesResponse(branch, status string, studies []study.Study) string {
-	if len(studies) == 0 {
-		return "No studies found for the provided filters."
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "Studies (status=%s", status)
+func buildStudiesEmbed(branch, status string, studies []study.Study) *discordgo.MessageEmbed {
+	branchLabel := "전체"
 	if branch != "" {
-		fmt.Fprintf(&b, ", branch=%s", branch)
-	}
-	b.WriteString("):\n")
-
-	for _, st := range studies {
-		fmt.Fprintf(&b, "- [%s] %s (%s) <#%s>\n", st.Branch, st.Name, st.Status, st.ChannelID)
+		branchLabel = branch
 	}
 
-	return truncateForDiscord(strings.TrimSuffix(b.String(), "\n"), discordMessageLimit)
+	embed := &discordgo.MessageEmbed{
+		Title:       "📚 스터디 목록",
+		Description: fmt.Sprintf("상태: **%s**\n분기: **%s**", status, branchLabel),
+		Color:       studiesEmbedColor(status),
+		Footer:      &discordgo.MessageEmbedFooter{Text: "조회 기준 · /studies"},
+	}
+	if len(studies) == 0 {
+		embed.Description += "\n\n조건에 맞는 스터디가 없습니다."
+		return embed
+	}
+
+	visibleStudies := studies
+	if len(visibleStudies) > discordEmbedMaxFields {
+		visibleStudies = studies[:discordEmbedMaxFields-1]
+	}
+
+	for _, st := range visibleStudies {
+		value := fmt.Sprintf("상태: `%s`", st.Status)
+		if st.ChannelID != "" {
+			value += fmt.Sprintf("\n채널: <#%s>", st.ChannelID)
+		}
+		if st.RoleID != "" {
+			value += fmt.Sprintf("\n역할: <@&%s>", st.RoleID)
+		}
+		if st.Description != "" {
+			value += fmt.Sprintf("\n설명: %s", st.Description)
+		}
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   truncateForDiscord(fmt.Sprintf("[%s] %s", st.Branch, st.Name), discordEmbedFieldNameLimit),
+			Value:  truncateForDiscord(value, discordEmbedFieldValueLimit),
+			Inline: false,
+		})
+	}
+
+	if omitted := len(studies) - len(visibleStudies); omitted > 0 {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "…",
+			Value:  fmt.Sprintf("%d개 스터디가 더 있습니다.", omitted),
+			Inline: false,
+		})
+	}
+
+	return embed
+}
+
+func studiesEmbedColor(status string) int {
+	if status == "archived" {
+		return discordEmbedColorGray
+	}
+	return discordEmbedColorBlurple
 }

@@ -8,28 +8,17 @@ import (
 	"livid-bot/study"
 )
 
-func TestBuildMembersResponse(t *testing.T) {
+func TestBuildMembersEmbed(t *testing.T) {
 	joinedAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 
-	longName := strings.Repeat("스터디", 50)
-	manyMembers := make([]study.StudyMember, 100)
-	for i := range manyMembers {
-		manyMembers[i] = study.StudyMember{
-			StudyID:  1,
-			UserID:   "111222333444555666",
-			Username: "user",
-			JoinedAt: joinedAt,
-		}
-	}
-
 	cases := []struct {
-		name      string
-		studyName string
-		members   []study.StudyMember
-		contains  []string
-		exact     string
-		maxRunes  int
-		hasSuffix string
+		name        string
+		studyName   string
+		members     []study.StudyMember
+		wantDesc    string
+		wantFields  int
+		contains    []string
+		wantOmitted string
 	}{
 		{
 			name:      "two members",
@@ -38,46 +27,63 @@ func TestBuildMembersResponse(t *testing.T) {
 				{StudyID: 1, UserID: "111", Username: "alice", JoinedAt: joinedAt},
 				{StudyID: 1, UserID: "222", Username: "bob", JoinedAt: joinedAt.AddDate(0, 0, 5)},
 			},
+			wantDesc:   "총 **2명**",
+			wantFields: 2,
 			contains: []string{
-				"📚 **알고리즘** members (2)",
 				"<@111>",
-				"(joined: 2026-03-01)",
+				"참여일: `2026-03-01`",
 				"<@222>",
-				"(joined: 2026-03-06)",
+				"참여일: `2026-03-06`",
 			},
 		},
 		{
-			name:      "empty",
-			studyName: "알고리즘",
-			members:   nil,
-			exact:     "No members found for study **알고리즘**.",
+			name:       "empty",
+			studyName:  "알고리즘",
+			members:    nil,
+			wantDesc:   "등록된 멤버가 없습니다.",
+			wantFields: 0,
 		},
 		{
-			name:      "truncation",
-			studyName: longName,
-			members:   manyMembers,
-			maxRunes:  discordMessageLimit,
-			hasSuffix: "...",
+			name:      "field cap",
+			studyName: "알고리즘",
+			members: func() []study.StudyMember {
+				members := make([]study.StudyMember, 30)
+				for i := range members {
+					members[i] = study.StudyMember{UserID: "111222333444555666", JoinedAt: joinedAt}
+				}
+				return members
+			}(),
+			wantDesc:    "총 **30명**",
+			wantFields:  discordEmbedMaxFields,
+			wantOmitted: "6명이 더 있습니다.",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := buildMembersResponse(tc.studyName, tc.members)
+			embed := buildMembersEmbed(tc.studyName, tc.members)
 
-			if tc.exact != "" && result != tc.exact {
-				t.Fatalf("expected %q, got %q", tc.exact, result)
+			if embed.Title != "📚 "+tc.studyName+" 멤버" {
+				t.Fatalf("unexpected title: %q", embed.Title)
 			}
-			for _, s := range tc.contains {
-				if !strings.Contains(result, s) {
-					t.Fatalf("expected result to contain %q, got: %s", s, result)
+			if embed.Description != tc.wantDesc {
+				t.Fatalf("expected description %q, got %q", tc.wantDesc, embed.Description)
+			}
+			if len(embed.Fields) != tc.wantFields {
+				t.Fatalf("expected %d fields, got %d", tc.wantFields, len(embed.Fields))
+			}
+
+			combined := embed.Description
+			for _, field := range embed.Fields {
+				combined += "\n" + field.Name + "\n" + field.Value
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(combined, want) {
+					t.Fatalf("expected embed to contain %q, got: %s", want, combined)
 				}
 			}
-			if tc.maxRunes > 0 && len([]rune(result)) > tc.maxRunes {
-				t.Fatalf("response exceeds limit: %d runes", len([]rune(result)))
-			}
-			if tc.hasSuffix != "" && !strings.HasSuffix(result, tc.hasSuffix) {
-				t.Fatalf("expected suffix %q, got: %s", tc.hasSuffix, result[len(result)-20:])
+			if tc.wantOmitted != "" && !strings.Contains(combined, tc.wantOmitted) {
+				t.Fatalf("expected omitted marker %q, got: %s", tc.wantOmitted, combined)
 			}
 		})
 	}

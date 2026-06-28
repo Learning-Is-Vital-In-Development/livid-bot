@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
@@ -44,8 +43,8 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 			return
 		}
 
-		content := buildMembersResponse(st.Name, members)
-		if err := editOriginalInteractionResponse(ctx, s, i, content); err != nil {
+		embed := buildMembersEmbed(st.Name, members)
+		if err := editOriginalInteractionResponseEmbed(ctx, s, i, embed); err != nil {
 			logCommand(ctx, i, "error", "failed to respond members command: %v", err)
 			return
 		}
@@ -72,18 +71,48 @@ func newMembersAutocompleteHandler(studyRepo *db.StudyRepository) func(ctx conte
 	}
 }
 
-func buildMembersResponse(studyName string, members []study.StudyMember) string {
+func buildMembersEmbed(studyName string, members []study.StudyMember) *discordgo.MessageEmbed {
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("📚 %s 멤버", studyName),
+		Description: fmt.Sprintf("총 **%d명**", len(members)),
+		Color:       discordEmbedColorBlurple,
+		Footer:      &discordgo.MessageEmbedFooter{Text: "조회 기준 · /members"},
+	}
 	if len(members) == 0 {
-		return fmt.Sprintf("No members found for study **%s**.", studyName)
+		embed.Description = "등록된 멤버가 없습니다."
+		return embed
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "📚 **%s** members (%d)\n", studyName, len(members))
-
-	for _, m := range members {
-		joinedDate := m.JoinedAt.Format("2006-01-02")
-		fmt.Fprintf(&b, "- <@%s> (joined: %s)\n", m.UserID, joinedDate)
+	visibleMembers := members
+	if len(visibleMembers) > discordEmbedMaxFields {
+		visibleMembers = members[:discordEmbedMaxFields-1]
 	}
 
-	return truncateForDiscord(strings.TrimSuffix(b.String(), "\n"), discordMessageLimit)
+	for idx, member := range visibleMembers {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   truncateForDiscord(fmt.Sprintf("%d. %s", idx+1, memberDisplayName(member)), discordEmbedFieldNameLimit),
+			Value:  fmt.Sprintf("참여일: `%s`", member.JoinedAt.Format("2006-01-02")),
+			Inline: true,
+		})
+	}
+
+	if omitted := len(members) - len(visibleMembers); omitted > 0 {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "…",
+			Value:  fmt.Sprintf("%d명이 더 있습니다.", omitted),
+			Inline: true,
+		})
+	}
+
+	return embed
+}
+
+func memberDisplayName(member study.StudyMember) string {
+	if member.UserID != "" {
+		return fmt.Sprintf("<@%s>", member.UserID)
+	}
+	if member.Username != "" {
+		return member.Username
+	}
+	return "unknown"
 }

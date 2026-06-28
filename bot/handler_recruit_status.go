@@ -37,7 +37,7 @@ func newRecruitStatusHandler(recruitRepo *db.RecruitRepository) func(ctx context
 			return
 		}
 
-		if err := editOriginalInteractionResponse(ctx, s, i, buildRecruitStatusSummary(branch, summaries)); err != nil {
+		if err := editOriginalInteractionResponseEmbed(ctx, s, i, buildRecruitStatusEmbed(branch, summaries)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond recruit-status summary: %v", err)
 			return
 		}
@@ -61,26 +61,87 @@ func botUserID(s *discordgo.Session) string {
 	return s.State.User.ID
 }
 
-func buildRecruitStatusSummary(branch string, summaries []RecruitSignupSummary) string {
-	if len(summaries) == 0 {
-		return fmt.Sprintf("📊 %s 모집 현황\n\n열린 모집이 없습니다.", branch)
+func buildRecruitStatusEmbed(branch string, summaries []RecruitSignupSummary) *discordgo.MessageEmbed {
+	embed := &discordgo.MessageEmbed{
+		Title:  fmt.Sprintf("📊 %s 모집 현황", branch),
+		Color:  recruitStatusEmbedColor(summaries),
+		Footer: &discordgo.MessageEmbedFooter{Text: "반응 기준 집계 · /recruit-status"},
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "📊 %s 모집 현황\n", branch)
-	fmt.Fprintf(&b, "최소 시작 인원: %d명\n", minMembersToStart)
+	if len(summaries) == 0 {
+		embed.Description = "열린 모집이 없습니다."
+		return embed
+	}
 
+	totalSignups := 0
+	readyStudies := 0
 	for _, summary := range summaries {
+		totalSignups += summary.Count
+		if summary.Count >= minMembersToStart {
+			readyStudies++
+		}
+	}
+	embed.Description = fmt.Sprintf("최소 시작 인원: **%d명**\n총 신청: **%d명** · 시작 가능: **%d/%d개**",
+		minMembersToStart, totalSignups, readyStudies, len(summaries))
+
+	visibleSummaries := summaries
+	if len(visibleSummaries) > discordEmbedMaxFields {
+		visibleSummaries = summaries[:discordEmbedMaxFields-1]
+	}
+
+	for _, summary := range visibleSummaries {
 		shortage := minMembersToStart - summary.Count
-		status := "시작 가능"
+		status := "✅ 시작 가능"
 		if shortage > 0 {
-			status = fmt.Sprintf("%d명 부족", shortage)
+			status = fmt.Sprintf("🟡 %d명 부족", shortage)
+			if summary.Count == 0 {
+				status = fmt.Sprintf("🔴 %d명 부족", shortage)
+			}
 		}
 
-		fmt.Fprintf(&b, "\n%s %s\n", summary.Emoji, summary.StudyName)
-		fmt.Fprintf(&b, "- 신청: %d명\n", summary.Count)
-		fmt.Fprintf(&b, "- 상태: %s\n", status)
+		value := fmt.Sprintf("신청: **%d명**\n상태: %s", summary.Count, status)
+		if summary.StudyChannelID != "" {
+			value += fmt.Sprintf("\n채널: <#%s>", summary.StudyChannelID)
+		}
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   truncateForDiscord(strings.TrimSpace(fmt.Sprintf("%s %s", summary.Emoji, summary.StudyName)), discordEmbedFieldNameLimit),
+			Value:  truncateForDiscord(value, discordEmbedFieldValueLimit),
+			Inline: false,
+		})
 	}
 
-	return truncateForDiscord(b.String(), discordMessageLimit)
+	if omitted := len(summaries) - len(visibleSummaries); omitted > 0 {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "…",
+			Value:  fmt.Sprintf("%d개 스터디가 더 있습니다.", omitted),
+			Inline: false,
+		})
+	}
+
+	return embed
+}
+
+func recruitStatusEmbedColor(summaries []RecruitSignupSummary) int {
+	if len(summaries) == 0 {
+		return discordEmbedColorGray
+	}
+
+	allReady := true
+	anySignup := false
+	for _, summary := range summaries {
+		if summary.Count > 0 {
+			anySignup = true
+		}
+		if summary.Count < minMembersToStart {
+			allReady = false
+		}
+	}
+	if allReady {
+		return discordEmbedColorGreen
+	}
+	if anySignup {
+		return discordEmbedColorYellow
+	}
+	return discordEmbedColorRed
 }

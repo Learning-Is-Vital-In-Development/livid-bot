@@ -26,18 +26,45 @@ func TestParseStudiesFilters(t *testing.T) {
 	}
 }
 
-func TestBuildStudiesResponse(t *testing.T) {
+func TestBuildStudiesEmbed(t *testing.T) {
 	studies := []study.Study{
-		{Branch: "26-2", Name: "algo", Status: "active", ChannelID: "111"},
+		{Branch: "26-2", Name: "algo", Status: "active", ChannelID: "111", RoleID: "999", Description: "algorithm"},
 		{Branch: "26-2", Name: "backend", Status: "active", ChannelID: "222"},
 	}
 
-	message := buildStudiesResponse("26-2", "active", studies)
+	embed := buildStudiesEmbed("26-2", "active", studies)
 
-	if !strings.Contains(message, "- [26-2] algo (active) <#111>") {
-		t.Fatalf("expected formatted first row, got: %s", message)
+	if embed.Title != "📚 스터디 목록" {
+		t.Fatalf("unexpected title: %q", embed.Title)
 	}
-	if !strings.Contains(message, "- [26-2] backend (active) <#222>") {
-		t.Fatalf("expected formatted second row, got: %s", message)
+	if embed.Color != discordEmbedColorBlurple {
+		t.Fatalf("unexpected color: %d", embed.Color)
+	}
+	if !strings.Contains(embed.Description, "분기: **26-2**") {
+		t.Fatalf("unexpected description: %s", embed.Description)
+	}
+	if len(embed.Fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(embed.Fields))
+	}
+	if embed.Fields[0].Name != "[26-2] algo" {
+		t.Fatalf("unexpected first field name: %q", embed.Fields[0].Name)
+	}
+	for _, want := range []string{"상태: `active`", "채널: <#111>", "역할: <@&999>", "설명: algorithm"} {
+		if !strings.Contains(embed.Fields[0].Value, want) {
+			t.Fatalf("expected first field to contain %q, got: %s", want, embed.Fields[0].Value)
+		}
+	}
+	if !strings.Contains(embed.Fields[1].Value, "채널: <#222>") {
+		t.Fatalf("expected second channel, got: %s", embed.Fields[1].Value)
+	}
+}
+
+func TestBuildStudiesEmbedEmpty(t *testing.T) {
+	embed := buildStudiesEmbed("", "archived", nil)
+	if embed.Color != discordEmbedColorGray {
+		t.Fatalf("expected archived gray color, got %d", embed.Color)
+	}
+	if !strings.Contains(embed.Description, "조건에 맞는 스터디가 없습니다") {
+		t.Fatalf("unexpected empty description: %s", embed.Description)
 	}
 }

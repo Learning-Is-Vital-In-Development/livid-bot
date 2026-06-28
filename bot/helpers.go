@@ -8,6 +8,18 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+const (
+	discordEmbedColorBlurple = 0x5865F2
+	discordEmbedColorGreen   = 0x2ECC71
+	discordEmbedColorYellow  = 0xF1C40F
+	discordEmbedColorRed     = 0xE74C3C
+	discordEmbedColorGray    = 0x95A5A6
+
+	discordEmbedMaxFields       = 25
+	discordEmbedFieldNameLimit  = 256
+	discordEmbedFieldValueLimit = 1024
+)
+
 func respondError(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	logCommand(ctx, i, "error", "%s", message)
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -42,6 +54,20 @@ func deferInteractionResponse(ctx context.Context, s *discordgo.Session, i *disc
 func editOriginalInteractionResponse(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
 	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content:         &content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{},
+	}, discordgo.WithContext(ctx))
+	return err
+}
+
+func editOriginalInteractionResponseEmbed(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, embed *discordgo.MessageEmbed) error {
+	content := ""
+	embeds := []*discordgo.MessageEmbed{}
+	if embed != nil {
+		embeds = append(embeds, embed)
+	}
+	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content:         &content,
+		Embeds:          &embeds,
 		AllowedMentions: &discordgo.MessageAllowedMentions{},
 	}, discordgo.WithContext(ctx))
 	return err
