@@ -48,20 +48,24 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 			return
 		}
 
+		if !deferInteractionResponse(ctx, s, i, true) {
+			return
+		}
+
 		studies, err := studyRepo.FindAllActiveByBranch(ctx, branch)
 		if err != nil {
 			logCommand(ctx, i, "error", "failed to load active studies branch=%s err=%v", branch, err)
-			respondError(ctx, s, i, "Failed to load studies.")
+			editDeferredError(ctx, s, i, "Failed to load studies.")
 			return
 		}
 
 		if len(studies) == 0 {
-			respondError(ctx, s, i, fmt.Sprintf("No active studies found in branch %s.", branch))
+			editDeferredError(ctx, s, i, fmt.Sprintf("No active studies found in branch %s.", branch))
 			return
 		}
 
 		if len(studies) > len(numberEmojis) {
-			respondError(ctx, s, i, fmt.Sprintf("Too many active studies (%d). Maximum is %d.", len(studies), len(numberEmojis)))
+			editDeferredError(ctx, s, i, fmt.Sprintf("Too many active studies (%d). Maximum is %d.", len(studies), len(numberEmojis)))
 			return
 		}
 
@@ -72,7 +76,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		msg, err := s.ChannelMessageSend(channelID, content, discordgo.WithContext(ctx))
 		if err != nil {
 			logCommand(ctx, i, "error", "failed to send recruit message branch=%s channel=%s err=%v", branch, channelID, err)
-			respondError(ctx, s, i, "Failed to send recruitment message.")
+			editDeferredError(ctx, s, i, "Failed to send recruitment message.")
 			return
 		}
 
@@ -105,7 +109,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 			if delErr := s.ChannelMessageDelete(channelID, msg.ID, discordgo.WithContext(ctx)); delErr != nil {
 				logCommand(ctx, i, "error", "failed to delete recruit message after DB failure message=%s err=%v", msg.ID, delErr)
 			}
-			respondError(ctx, s, i, "Failed to save recruitment data. Message has been removed. Please try again.")
+			editDeferredError(ctx, s, i, "Failed to save recruitment data. Message has been removed. Please try again.")
 			return
 		}
 
@@ -119,13 +123,7 @@ func newRecruitHandler(studyRepo *db.StudyRepository, recruitRepo *db.RecruitRep
 		}
 		reactionHandler.Track(msg.ID, emojiRoleMap)
 
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Recruitment message posted in <#%s>!", channelID),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, fmt.Sprintf("Recruitment message posted in <#%s>!", channelID)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond recruit success: %v", err)
 			return
 		}

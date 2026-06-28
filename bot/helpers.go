@@ -21,6 +21,39 @@ func respondError(ctx context.Context, s *discordgo.Session, i *discordgo.Intera
 	}
 }
 
+func deferInteractionResponse(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, ephemeral bool) bool {
+	data := &discordgo.InteractionResponseData{
+		AllowedMentions: &discordgo.MessageAllowedMentions{},
+	}
+	if ephemeral {
+		data.Flags = discordgo.MessageFlagsEphemeral
+	}
+
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: data,
+	}, discordgo.WithContext(ctx)); err != nil {
+		logCommand(ctx, i, "error", "failed to defer interaction response: %v", err)
+		return false
+	}
+	return true
+}
+
+func editOriginalInteractionResponse(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
+	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content:         &content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{},
+	}, discordgo.WithContext(ctx))
+	return err
+}
+
+func editDeferredError(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	logCommand(ctx, i, "error", "%s", message)
+	if err := editOriginalInteractionResponse(ctx, s, i, message); err != nil {
+		logCommand(ctx, i, "error", "failed to edit deferred error response: %v", err)
+	}
+}
+
 func respondAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) {
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionApplicationCommandAutocompleteResult,

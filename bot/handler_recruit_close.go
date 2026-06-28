@@ -24,29 +24,32 @@ func newRecruitCloseHandler(
 			respondError(ctx, s, i, fmt.Sprintf("Invalid branch format: %q. Use YY-Q (e.g. 26-2).", branch))
 			return
 		}
+		if !deferInteractionResponse(ctx, s, i, true) {
+			return
+		}
 
 		mappings, err := recruitRepo.FindOpenRecruitMappingsByBranch(ctx, branch)
 		if err != nil {
 			slog.Error("failed to find open recruit mappings by branch", "branch", branch, "error", err)
-			respondError(ctx, s, i, "Failed to load recruitment data.")
+			editDeferredError(ctx, s, i, "Failed to load recruitment data.")
 			return
 		}
 		if len(mappings) == 0 {
-			respondError(ctx, s, i, fmt.Sprintf("No open recruitments found for branch %q.", branch))
+			editDeferredError(ctx, s, i, fmt.Sprintf("No open recruitments found for branch %q.", branch))
 			return
 		}
 
 		summaries, err := collectRecruitSignupsFromMappings(ctx, s, mappings, botUserID(s))
 		if err != nil {
 			slog.Error("failed to collect recruit signup reactions", "branch", branch, "error", err)
-			respondError(ctx, s, i, "Failed to collect recruitment reactions.")
+			editDeferredError(ctx, s, i, "Failed to collect recruitment reactions.")
 			return
 		}
 
 		reactionHandler.Untrack(recruitMessageIDsFromMappings(mappings))
 		if _, err := recruitRepo.CloseByBranch(ctx, branch); err != nil {
 			slog.Error("failed to close recruit messages by branch", "branch", branch, "error", err)
-			respondError(ctx, s, i, "Failed to close recruitment.")
+			editDeferredError(ctx, s, i, "Failed to close recruitment.")
 			return
 		}
 
@@ -115,13 +118,7 @@ func newRecruitCloseHandler(
 		}
 
 		summary := buildStudyStartSummary(started, archived, errors)
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: summary,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, summary); err != nil {
 			logCommand(ctx, i, "error", "failed to respond recruit-close summary: %v", err)
 			return
 		}

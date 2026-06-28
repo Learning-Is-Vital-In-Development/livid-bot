@@ -24,22 +24,19 @@ func newStudiesHandler(studyRepo *db.StudyRepository) func(ctx context.Context, 
 			respondError(ctx, s, i, "Invalid status. Use one of: active, archived.")
 			return
 		}
+		if !deferInteractionResponse(ctx, s, i, true) {
+			return
+		}
 
 		studies, err := studyRepo.FindByFilters(ctx, branch, status)
 		if err != nil {
 			logCommand(ctx, i, "error", "failed to load studies branch=%q status=%q err=%v", branch, status, err)
-			respondError(ctx, s, i, "Failed to load studies.")
+			editDeferredError(ctx, s, i, "Failed to load studies.")
 			return
 		}
 
 		content := buildStudiesResponse(branch, status, studies)
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: content,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, content); err != nil {
 			logCommand(ctx, i, "error", "failed to respond studies command: %v", err)
 			return
 		}

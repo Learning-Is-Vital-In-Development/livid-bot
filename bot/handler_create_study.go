@@ -35,13 +35,16 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Conte
 			description = opt.StringValue()
 		}
 		logCommand(ctx, i, "start", "create-study requested branch=%s name=%s", branch, name)
+		if !deferInteractionResponse(ctx, s, i, false) {
+			return
+		}
 
 		guildID := i.GuildID
 
 		categoryID, channels, err := ensureCategoryID(ctx, s, guildID, "active")
 		if err != nil {
 			slog.Error("failed to ensure active category", "guild_id", guildID, "error", err)
-			respondError(ctx, s, i, "Failed to prepare active category.")
+			editDeferredError(ctx, s, i, "Failed to prepare active category.")
 			return
 		}
 
@@ -50,7 +53,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Conte
 		for _, ch := range channels {
 			if ch.Type == discordgo.ChannelTypeGuildText && ch.Name == channelName {
 				logCommand(ctx, i, "duplicate", "channel already exists name=%s channel=%s", channelName, ch.ID)
-				respondError(ctx, s, i, fmt.Sprintf("Channel **%s** already exists: <#%s>", channelName, ch.ID))
+				editDeferredError(ctx, s, i, fmt.Sprintf("Channel **%s** already exists: <#%s>", channelName, ch.ID))
 				return
 			}
 		}
@@ -63,7 +66,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Conte
 		}, discordgo.WithContext(ctx))
 		if err != nil {
 			logCommand(ctx, i, "error", "failed to create channel name=%s err=%v", channelName, err)
-			respondError(ctx, s, i, "Failed to create channel.")
+			editDeferredError(ctx, s, i, "Failed to create channel.")
 			return
 		}
 
@@ -78,7 +81,7 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Conte
 			if _, delErr := s.ChannelDelete(channel.ID, discordgo.WithContext(ctx)); delErr != nil {
 				logCommand(ctx, i, "error", "failed to cleanup channel=%s err=%v", channel.ID, delErr)
 			}
-			respondError(ctx, s, i, "Failed to create role.")
+			editDeferredError(ctx, s, i, "Failed to create role.")
 			return
 		}
 
@@ -93,17 +96,12 @@ func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Conte
 			if delErr := s.GuildRoleDelete(guildID, role.ID, discordgo.WithContext(ctx)); delErr != nil {
 				logCommand(ctx, i, "error", "failed to cleanup role=%s err=%v", role.ID, delErr)
 			}
-			respondError(ctx, s, i, "Failed to save study. Duplicate name in same branch?")
+			editDeferredError(ctx, s, i, "Failed to save study. Duplicate name in same branch?")
 			return
 		}
 
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Study **%s** created in branch **%s**!\nChannel: <#%s>\nRole: <@&%s>",
-					name, branch, channel.ID, role.ID),
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, fmt.Sprintf("Study **%s** created in branch **%s**!\nChannel: <#%s>\nRole: <@&%s>",
+			name, branch, channel.ID, role.ID)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond create-study success: %v", err)
 			return
 		}

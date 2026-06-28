@@ -26,28 +26,26 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 		}
 		channelID := opt.StringValue()
 		logCommand(ctx, i, "start", "members requested channel=%s", channelID)
+		if !deferInteractionResponse(ctx, s, i, true) {
+			return
+		}
+
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
 			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
-			respondError(ctx, s, i, "No study found for the selected channel.")
+			editDeferredError(ctx, s, i, "No study found for the selected channel.")
 			return
 		}
 
 		members, err := memberRepo.FindActiveByStudyID(ctx, st.ID)
 		if err != nil {
 			slog.Error("failed to find members for study", "study_id", st.ID, "study_name", st.Name, "error", err)
-			respondError(ctx, s, i, "Failed to load study members.")
+			editDeferredError(ctx, s, i, "Failed to load study members.")
 			return
 		}
 
 		content := buildMembersResponse(st.Name, members)
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: content,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, content); err != nil {
 			logCommand(ctx, i, "error", "failed to respond members command: %v", err)
 			return
 		}

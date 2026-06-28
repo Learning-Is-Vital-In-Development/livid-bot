@@ -77,22 +77,26 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Cont
 
 		channelID := optionMap["channel"].StringValue()
 		logCommand(ctx, i, "start", "archive-study requested channel=%s", channelID)
+		if !deferInteractionResponse(ctx, s, i, false) {
+			return
+		}
+
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
 			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
-			respondError(ctx, s, i, "No study found for the selected channel.")
+			editDeferredError(ctx, s, i, "No study found for the selected channel.")
 			return
 		}
 
 		if st.Status != "active" {
-			respondError(ctx, s, i, fmt.Sprintf("Study %q is already archived.", st.Name))
+			editDeferredError(ctx, s, i, fmt.Sprintf("Study %q is already archived.", st.Name))
 			return
 		}
 
 		result, err := archiveStudy(ctx, s, studyRepo, i.GuildID, st)
 		if err != nil {
 			slog.Error("failed to archive study", "study_id", st.ID, "study_name", st.Name, "error", err)
-			respondError(ctx, s, i, fmt.Sprintf("Failed to archive study: %v", err))
+			editDeferredError(ctx, s, i, fmt.Sprintf("Failed to archive study: %v", err))
 			return
 		}
 
@@ -101,12 +105,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Cont
 			warning = fmt.Sprintf("\nWarning: %s. Please remove it manually if needed.", result.Warning)
 		}
 
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, result.CategoryName, warning),
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, result.CategoryName, warning)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond archive-study success: %v", err)
 			return
 		}
@@ -145,16 +144,19 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Contex
 			dryRun = opt.BoolValue()
 		}
 		logCommand(ctx, i, "start", "archive-all requested dry_run=%t", dryRun)
+		if !deferInteractionResponse(ctx, s, i, dryRun) {
+			return
+		}
 
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
 			slog.Error("failed to find active studies", "error", err)
-			respondError(ctx, s, i, "Failed to load active studies.")
+			editDeferredError(ctx, s, i, "Failed to load active studies.")
 			return
 		}
 
 		if len(studies) == 0 {
-			respondError(ctx, s, i, "No active studies to archive.")
+			editDeferredError(ctx, s, i, "No active studies to archive.")
 			return
 		}
 
@@ -162,7 +164,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Contex
 			allocator, err := newArchiveCategoryAllocator(ctx, s, i.GuildID)
 			if err != nil {
 				slog.Error("failed to prepare archive category allocator", "error", err)
-				respondError(ctx, s, i, "Failed to prepare archive category.")
+				editDeferredError(ctx, s, i, "Failed to prepare archive category.")
 				return
 			}
 			studyNames := make([]string, len(studies))
@@ -170,13 +172,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Contex
 				studyNames[idx] = st.Name
 			}
 			plan := allocator.Plan(len(studies))
-			if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: buildArchiveAllDryRunSummary(studyNames, plan),
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			}, discordgo.WithContext(ctx)); err != nil {
+			if err := editOriginalInteractionResponse(ctx, s, i, buildArchiveAllDryRunSummary(studyNames, plan)); err != nil {
 				logCommand(ctx, i, "error", "failed to respond archive-all dry-run: %v", err)
 				return
 			}
@@ -203,12 +199,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Contex
 			successCount++
 		}
 
-		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: buildArchiveAllSummary(len(studies), successCount, failures, warnings),
-			},
-		}, discordgo.WithContext(ctx)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, buildArchiveAllSummary(len(studies), successCount, failures, warnings)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond archive-all summary: %v", err)
 			return
 		}
