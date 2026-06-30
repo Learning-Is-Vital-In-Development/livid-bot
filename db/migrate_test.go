@@ -37,6 +37,13 @@ func TestMigrateDropsLegacyVoiceChannelSessions(t *testing.T) {
 		if entry.IsDir() || entry.Name() >= "010_drop_voice_channel_sessions.sql" {
 			continue
 		}
+		sql, err := migrationFS.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			t.Fatalf("read migration %s: %v", entry.Name(), err)
+		}
+		if _, err := tdb.Pool.Exec(ctx, string(sql)); err != nil {
+			t.Fatalf("apply migration %s: %v", entry.Name(), err)
+		}
 		if _, err := tdb.Pool.Exec(ctx, `INSERT INTO schema_migrations (filename) VALUES ($1)`, entry.Name()); err != nil {
 			t.Fatalf("mark migration %s applied: %v", entry.Name(), err)
 		}
