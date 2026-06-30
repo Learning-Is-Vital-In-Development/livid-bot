@@ -19,7 +19,7 @@ func newRecruitStatusHandler(recruitRepo *db.RecruitRepository) func(ctx context
 			respondError(ctx, s, i, fmt.Sprintf("Invalid branch format: %q. Use YY-Q (e.g. 26-2).", branch))
 			return
 		}
-		if !deferInteractionResponse(ctx, s, i, true) {
+		if !deferInteractionResponse(ctx, s, i, false) {
 			return
 		}
 
