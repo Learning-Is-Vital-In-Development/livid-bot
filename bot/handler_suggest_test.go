@@ -13,12 +13,7 @@ import (
 func TestSuggestModalHandlerDefersBeforePublishingAndEditsOriginal(t *testing.T) {
 	order := []string{}
 	store := &fakeSuggestStore{
-		order: &order,
-		activePeriod: &db.SuggestionPeriod{
-			ID:        7,
-			ChannelID: "forum",
-			ClosesAt:  time.Now().Add(time.Hour),
-		},
+		order:      &order,
 		suggestion: &db.StudySuggestion{ID: 42},
 	}
 	client := &fakeSuggestModalDiscordClient{
@@ -35,7 +30,6 @@ func TestSuggestModalHandlerDefersBeforePublishingAndEditsOriginal(t *testing.T)
 
 	wantOrder := []string{
 		"defer",
-		"get-active-period",
 		"load-channel",
 		"create-forum-thread",
 		"create-suggestion",
@@ -50,7 +44,7 @@ func TestSuggestModalHandlerDefersBeforePublishingAndEditsOriginal(t *testing.T)
 			t.Fatalf("expected order %v, got %v", wantOrder, order)
 		}
 	}
-	if store.createdPeriodID != 7 || store.createdMessageID != "starter-message" || store.createdChannelID != "thread" {
+	if store.createdPeriodID != 0 || store.createdMessageID != "starter-message" || store.createdChannelID != "thread" {
 		t.Fatalf("expected suggestion to store forum thread starter ref, got period=%d channel=%s message=%s", store.createdPeriodID, store.createdChannelID, store.createdMessageID)
 	}
 	if client.reactionChannelID != "thread" || client.reactionMessageID != "starter-message" || client.reactionEmoji != "🚀" {
@@ -63,8 +57,8 @@ func TestSuggestModalHandlerDefersBeforePublishingAndEditsOriginal(t *testing.T)
 
 func TestInteractionCommandNameUsesModalCustomID(t *testing.T) {
 	got := interactionCommandName(newSuggestModalInteractionForTest("Go 스터디", ""))
-	if got != "suggest_modal" {
-		t.Fatalf("expected modal custom ID, got %q", got)
+	if got != "suggest_modal:anonymous:3:14:forum" {
+		t.Fatalf("expected modal custom ID with options, got %q", got)
 	}
 }
 
@@ -101,13 +95,13 @@ func (f *fakeSuggestStore) GetActivePeriod(context.Context) (*db.SuggestionPerio
 	return f.activePeriod, nil
 }
 
-func (f *fakeSuggestStore) CreateSuggestion(_ context.Context, periodID int64, title, description, messageID, channelID string) (*db.StudySuggestion, error) {
+func (f *fakeSuggestStore) CreateSuggestion(_ context.Context, params db.CreateSuggestionParams) (*db.StudySuggestion, error) {
 	f.appendOrder("create-suggestion")
-	f.createdPeriodID = periodID
-	f.createdTitle = title
-	f.createdDesc = description
-	f.createdMessageID = messageID
-	f.createdChannelID = channelID
+	f.createdPeriodID = params.PeriodID
+	f.createdTitle = params.Title
+	f.createdDesc = params.Description
+	f.createdMessageID = params.MessageID
+	f.createdChannelID = params.ChannelID
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
@@ -141,7 +135,7 @@ func (f *fakeSuggestModalDiscordClient) Channel(channelID string, options ...dis
 	return ch, nil
 }
 
-func (f *fakeSuggestModalDiscordClient) ChannelMessageSend(channelID, content string, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+func (f *fakeSuggestModalDiscordClient) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error) {
 	f.appendOrder("send-message")
 	if f.sentMessage == nil {
 		return nil, errors.New("sent message not configured")
@@ -208,7 +202,7 @@ func newSuggestModalInteractionForTest(title, description string) *discordgo.Int
 		Type:    discordgo.InteractionModalSubmit,
 		GuildID: "guild-1",
 		Data: discordgo.ModalSubmitInteractionData{
-			CustomID: "suggest_modal",
+			CustomID: "suggest_modal:anonymous:3:14:forum",
 			Components: []discordgo.MessageComponent{
 				&discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 					&discordgo.TextInput{CustomID: "title", Value: title},

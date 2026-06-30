@@ -32,6 +32,23 @@ func TestCommandsUseRecruitCloseAndStatusWithoutVoteOrStudyStart(t *testing.T) {
 	}
 	assertAdminCommand(t, statusCmd)
 	assertBranchAutocompleteOption(t, statusCmd)
+
+	nudgeCmd := byName["study-nudge"]
+	if nudgeCmd == nil {
+		t.Fatal("expected /study-nudge command to exist")
+	}
+	assertAdminCommand(t, nudgeCmd)
+
+	suggestCmd := byName["suggest"]
+	if suggestCmd == nil {
+		t.Fatal("expected /suggest command to exist")
+	}
+	if len(suggestCmd.Options) != 3 {
+		t.Fatalf("expected /suggest to have visibility, threshold, duration_days options, got %d", len(suggestCmd.Options))
+	}
+	if suggestCmd.Options[0].Name != "visibility" || !suggestCmd.Options[0].Required {
+		t.Fatalf("expected required visibility option, got %+v", suggestCmd.Options[0])
+	}
 }
 
 func assertAdminCommand(t *testing.T, cmd *discordgo.ApplicationCommand) {

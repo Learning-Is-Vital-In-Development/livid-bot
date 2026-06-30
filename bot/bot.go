@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -39,6 +40,7 @@ func Run(cfg Config) error {
 	if err := reactionHandler.LoadFromDB(cfg.RecruitRepo); err != nil {
 		slog.Warn("failed to load reaction mappings", "error", err)
 	}
+	suggestionReactionHandler := NewSuggestionReactionHandler(cfg.SuggestionRepo, cfg.StudyRepo, cfg.MemberRepo)
 
 	commandHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":           handleHelp,
@@ -52,6 +54,7 @@ func Run(cfg Config) error {
 		"recruit-close":  newRecruitCloseHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
 		"suggest-start":  newSuggestStartHandler(cfg.SuggestionRepo),
 		"suggest":        newSuggestHandler(cfg.SuggestionRepo),
+		"study-nudge":    newStudyNudgeHandler(cfg.SuggestionRepo),
 	}
 	autocompleteHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":           handleHelpAutocomplete,
@@ -84,8 +87,7 @@ func Run(cfg Config) error {
 			}
 		case discordgo.InteractionModalSubmit:
 			customID := i.ModalSubmitData().CustomID
-			switch customID {
-			case "suggest_modal":
+			if strings.HasPrefix(customID, suggestionModalPrefix) {
 				newSuggestModalHandler(cfg.SuggestionRepo)(ctx, s, i)
 			}
 		}
@@ -93,6 +95,8 @@ func Run(cfg Config) error {
 
 	discord.AddHandler(reactionHandler.OnReactionAdd)
 	discord.AddHandler(reactionHandler.OnReactionRemove)
+	discord.AddHandler(suggestionReactionHandler.OnReactionAdd)
+	discord.AddHandler(suggestionReactionHandler.OnReactionRemove)
 
 	if err := discord.Open(); err != nil {
 		return fmt.Errorf("open discord session: %w", err)

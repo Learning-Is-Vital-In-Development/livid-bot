@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func TestIsValidBranch(t *testing.T) {
@@ -58,6 +60,7 @@ func TestBuildStudyChannelName(t *testing.T) {
 		{branch: "26-2", name: "네트워크", expected: "26-2-네트워크"},
 		{branch: "26-2", name: "자바 스터디", expected: "26-2-자바-스터디"},
 		{branch: "26-2", name: "Go 언어", expected: "26-2-go-언어"},
+		{branch: "", name: "Go 언어", expected: "go-언어"},
 	}
 
 	for _, tc := range testCases {
@@ -73,6 +76,18 @@ func TestSanitizeChannelName_TruncatesAt100(t *testing.T) {
 	result := sanitizeChannelName(long)
 	if len(result) > 100 {
 		t.Fatalf("expected max 100 chars, got %d", len(result))
+	}
+}
+
+func TestUniqueStudyChannelNameAddsSuffix(t *testing.T) {
+	channels := []*discordgo.Channel{
+		{Name: "26-2-go", Type: discordgo.ChannelTypeGuildText},
+		{Name: "26-2-go-2", Type: discordgo.ChannelTypeGuildText},
+	}
+
+	got := uniqueStudyChannelName("26-2-go", channels)
+	if got != "26-2-go-3" {
+		t.Fatalf("expected suffix fallback, got %q", got)
 	}
 }
 

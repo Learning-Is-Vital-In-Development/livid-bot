@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,11 +21,30 @@ const (
 	suggestionAnnouncementThreadName = "스터디 제안 안내"
 	suggestionDefaultThreadName      = "익명 스터디 제안"
 	suggestionThreadNameLimit        = 100
+	suggestionModalPrefix            = "suggest_modal"
+	suggestionVisibilityAnonymous    = "anonymous"
+	suggestionVisibilityPublic       = "public"
+	suggestionDefaultDurationDays    = 14
+	suggestionMaxDurationDays        = 90
 )
+
+type suggestionModalOptions struct {
+	Visibility   string
+	Threshold    int
+	DurationDays int
+	ChannelID    string
+}
+
+type suggestionPostOptions struct {
+	Visibility     string
+	ProposerUserID string
+	Threshold      int
+	ExpiresAt      time.Time
+}
 
 type suggestionDiscordClient interface {
 	Channel(channelID string, options ...discordgo.RequestOption) (*discordgo.Channel, error)
-	ChannelMessageSend(channelID, content string, options ...discordgo.RequestOption) (*discordgo.Message, error)
+	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error)
 	ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Channel, error)
 }
 
@@ -55,13 +75,54 @@ func buildSuggestionAnnouncement(closesAt time.Time) string {
 	return fmt.Sprintf("📣 스터디 제안을 받습니다!\n마감일: %s 까지\n`/suggest` 로 익명 주제를 제안해주세요.", suggestionDateLabel(closesAt))
 }
 
-func buildSuggestionMessage(title, description string, voteCount int) string {
-	_ = voteCount
-	if strings.TrimSpace(description) != "" {
-		return fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s\n설명: %s", title, description)
+func buildSuggestionMessage(title, description string, opts suggestionPostOptions) string {
+	proposer := "익명"
+	if opts.Visibility == suggestionVisibilityPublic && opts.ProposerUserID != "" {
+		proposer = fmt.Sprintf("<@%s>", opts.ProposerUserID)
 	}
 
-	return fmt.Sprintf("📬 익명 스터디 제안\n\n**주제**: %s", title)
+	var b strings.Builder
+	fmt.Fprintf(&b, "📬 스터디 제안\n\n제안자: %s\n**주제**: %s\n", proposer, title)
+	if strings.TrimSpace(description) != "" {
+		fmt.Fprintf(&b, "설명: %s\n", description)
+	}
+	fmt.Fprintf(&b, "\n🚀를 누르면 실제 참여 의사로 집계됩니다.\n🚀 %d명 이상이 모이면 스터디 채널이 자동 개설됩니다.\n마감: %s", opts.Threshold, suggestionDateLabel(opts.ExpiresAt))
+	return b.String()
+}
+
+func buildSuggestModalCustomID(opts suggestionModalOptions) string {
+	return fmt.Sprintf("%s:%s:%d:%d:%s", suggestionModalPrefix, opts.Visibility, opts.Threshold, opts.DurationDays, opts.ChannelID)
+}
+
+func parseSuggestModalCustomID(customID string) (suggestionModalOptions, error) {
+	parts := strings.Split(customID, ":")
+	if len(parts) != 5 || parts[0] != suggestionModalPrefix {
+		return suggestionModalOptions{}, errors.New("invalid suggest modal custom id")
+	}
+	threshold, err := strconv.Atoi(parts[2])
+	if err != nil || threshold < 1 {
+		return suggestionModalOptions{}, errors.New("invalid suggest threshold")
+	}
+	durationDays, err := strconv.Atoi(parts[3])
+	if err != nil || durationDays < 1 || durationDays > suggestionMaxDurationDays {
+		return suggestionModalOptions{}, errors.New("invalid suggest duration")
+	}
+	visibility := parts[1]
+	if visibility != suggestionVisibilityAnonymous && visibility != suggestionVisibilityPublic {
+		return suggestionModalOptions{}, errors.New("invalid suggest visibility")
+	}
+	if parts[4] == "" {
+		return suggestionModalOptions{}, errors.New("empty suggestion channel")
+	}
+	return suggestionModalOptions{Visibility: visibility, Threshold: threshold, DurationDays: durationDays, ChannelID: parts[4]}, nil
+}
+
+func suggestionExpiresAtFromDuration(now time.Time, days int) time.Time {
+	if days < 1 {
+		days = suggestionDefaultDurationDays
+	}
+	d := now.In(suggestionDeadlineLocation).AddDate(0, 0, days)
+	return time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, suggestionDeadlineLocation)
 }
 
 func findSuggestionDiscussionChannel(channels []*discordgo.Channel) *discordgo.Channel {
@@ -77,8 +138,8 @@ func publishSuggestionAnnouncement(ctx context.Context, client suggestionDiscord
 	return publishSuggestionContent(ctx, client, channelID, suggestionAnnouncementThreadName, buildSuggestionAnnouncement(closesAt))
 }
 
-func publishSuggestionMessage(ctx context.Context, client suggestionDiscordClient, channelID, title, description string, voteCount int) (suggestionMessageRef, error) {
-	return publishSuggestionContent(ctx, client, channelID, buildSuggestionThreadName(title), buildSuggestionMessage(title, description, voteCount))
+func publishSuggestionMessage(ctx context.Context, client suggestionDiscordClient, channelID, title, description string, opts suggestionPostOptions) (suggestionMessageRef, error) {
+	return publishSuggestionContent(ctx, client, channelID, buildSuggestionThreadName(title), buildSuggestionMessage(title, description, opts))
 }
 
 func publishSuggestionContent(ctx context.Context, client suggestionDiscordClient, channelID, threadName, content string) (suggestionMessageRef, error) {
@@ -91,7 +152,7 @@ func publishSuggestionContent(ctx context.Context, client suggestionDiscordClien
 		thread, err := client.ForumThreadStartComplex(
 			channelID,
 			&discordgo.ThreadStart{Name: buildSuggestionThreadName(threadName)},
-			&discordgo.MessageSend{Content: content},
+			&discordgo.MessageSend{Content: content, AllowedMentions: &discordgo.MessageAllowedMentions{}},
 			discordgo.WithContext(ctx),
 		)
 		if err != nil {
@@ -103,7 +164,7 @@ func publishSuggestionContent(ctx context.Context, client suggestionDiscordClien
 		return suggestionMessageRef{ChannelID: thread.ID, MessageID: thread.LastMessageID}, nil
 	}
 
-	msg, err := client.ChannelMessageSend(channelID, content, discordgo.WithContext(ctx))
+	msg, err := client.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{Content: content, AllowedMentions: &discordgo.MessageAllowedMentions{}}, discordgo.WithContext(ctx))
 	if err != nil {
 		return suggestionMessageRef{}, fmt.Errorf("send suggestion message: %w", err)
 	}

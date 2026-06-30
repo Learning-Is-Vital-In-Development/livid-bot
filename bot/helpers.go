@@ -99,6 +99,10 @@ func int64Ptr(v int64) *int64 {
 	return &v
 }
 
+func float64Ptr(v float64) *float64 {
+	return &v
+}
+
 func logCommand(ctx context.Context, i *discordgo.InteractionCreate, stage, format string, args ...interface{}) {
 	commandName := interactionCommandName(i)
 	guildID := "unknown"

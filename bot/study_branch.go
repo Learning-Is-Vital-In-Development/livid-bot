@@ -1,13 +1,18 @@
 package bot
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 var branchPattern = regexp.MustCompile(`^[0-9]{2}-[1-4]$`)
 var prefixedStudyNamePattern = regexp.MustCompile(`^[0-9]{2}-[1-4]-(.*)$`)
+
+const maxChannelNameRunes = 100
 
 func isValidBranch(branch string) bool {
 	return branchPattern.MatchString(strings.TrimSpace(branch))
@@ -22,13 +27,36 @@ func normalizeStudyName(name string) string {
 }
 
 func buildStudyChannelName(branch, name string) string {
+	branch = strings.TrimSpace(branch)
+	name = strings.TrimSpace(name)
+	if branch == "" {
+		return sanitizeChannelName(name)
+	}
 	return sanitizeChannelName(branch + "-" + name)
+}
+
+func uniqueStudyChannelName(base string, channels []*discordgo.Channel) string {
+	existing := make(map[string]struct{}, len(channels))
+	for _, ch := range channels {
+		if ch != nil && ch.Type == discordgo.ChannelTypeGuildText {
+			existing[ch.Name] = struct{}{}
+		}
+	}
+	if _, ok := existing[base]; !ok {
+		return base
+	}
+	for n := 2; ; n++ {
+		suffix := fmt.Sprintf("-%d", n)
+		candidate := truncateRunes(base, maxChannelNameRunes-len(suffix)) + suffix
+		if _, ok := existing[candidate]; !ok {
+			return candidate
+		}
+	}
 }
 
 func sanitizeChannelName(name string) string {
 	name = strings.ToLower(name)
 
-	const maxChannelNameRunes = 100
 	var b strings.Builder
 	runeCount := 0
 	for _, r := range name {

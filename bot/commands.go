@@ -185,6 +185,38 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:        "suggest",
-		Description: "익명으로 스터디를 제안합니다",
+		Description: "스터디를 제안합니다",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "visibility",
+				Description: "제안자 표시 여부",
+				Required:    true,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{Name: "익명으로 제안", Value: "anonymous"},
+					{Name: "제안자 공개", Value: "public"},
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionInteger,
+				Name:        "threshold",
+				Description: "자동 개설 기준 인원 (기본 3명)",
+				Required:    false,
+				MinValue:    float64Ptr(1),
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionInteger,
+				Name:        "duration_days",
+				Description: "제안 유효기간 일수 (기본 14일)",
+				Required:    false,
+				MinValue:    float64Ptr(1),
+				MaxValue:    90,
+			},
+		},
+	},
+	{
+		Name:                     "study-nudge",
+		Description:              "open 상태의 스터디 제안을 공지 채널에 알립니다",
+		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 	},
 }
