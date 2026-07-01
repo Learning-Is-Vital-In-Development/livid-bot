@@ -43,26 +43,18 @@ func Run(cfg Config) error {
 	suggestionReactionHandler := NewSuggestionReactionHandler(cfg.SuggestionRepo, cfg.StudyRepo, cfg.MemberRepo)
 
 	commandHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
-		"help":           handleHelp,
-		"create-study":   newCreateStudyHandler(cfg.StudyRepo),
-		"recruit":        newRecruitHandler(cfg.StudyRepo, cfg.RecruitRepo, reactionHandler),
-		"archive-study":  newArchiveStudyHandler(cfg.StudyRepo),
-		"studies":        newStudiesHandler(cfg.StudyRepo),
-		"members":        newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
-		"archive-all":    newArchiveAllHandler(cfg.StudyRepo),
-		"recruit-status": newRecruitStatusHandler(cfg.RecruitRepo),
-		"recruit-close":  newRecruitCloseHandler(cfg.StudyRepo, cfg.MemberRepo, cfg.RecruitRepo, reactionHandler),
-		"suggest-start":  newSuggestStartHandler(cfg.SuggestionRepo),
-		"suggest":        newSuggestHandler(cfg.SuggestionRepo),
-		"study-nudge":    newStudyNudgeHandler(cfg.SuggestionRepo),
+		"help":          handleHelp,
+		"archive-study": newArchiveStudyHandler(cfg.StudyRepo),
+		"studies":       newStudiesHandler(cfg.StudyRepo),
+		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
+		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
+		"suggest":       newSuggestHandler(cfg.SuggestionRepo),
+		"study-nudge":   newStudyNudgeHandler(cfg.SuggestionRepo),
 	}
 	autocompleteHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
-		"help":           handleHelpAutocomplete,
-		"archive-study":  newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
-		"members":        newMembersAutocompleteHandler(cfg.StudyRepo),
-		"recruit":        newRecruitBranchAutocompleteHandler(cfg.StudyRepo),
-		"recruit-status": newRecruitCloseAutocompleteHandler(cfg.StudyRepo),
-		"recruit-close":  newRecruitCloseAutocompleteHandler(cfg.StudyRepo),
+		"help":          handleHelpAutocomplete,
+		"archive-study": newArchiveStudyAutocompleteHandler(cfg.StudyRepo),
+		"members":       newMembersAutocompleteHandler(cfg.StudyRepo),
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {

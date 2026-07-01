@@ -6,38 +6,26 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func TestCommandsUseRecruitCloseAndStatusWithoutVoteOrStudyStart(t *testing.T) {
+func TestCommandsExposeSuggestionFlowOnly(t *testing.T) {
 	byName := make(map[string]*discordgo.ApplicationCommand, len(commands))
 	for _, cmd := range commands {
 		byName[cmd.Name] = cmd
 	}
 
-	if _, ok := byName["vote"]; ok {
-		t.Fatal("expected /vote command to be removed")
+	removed := []string{
+		"vote",
+		"study-start",
+		"create-study",
+		"recruit",
+		"recruit-status",
+		"recruit-close",
+		"suggest-start",
 	}
-	if _, ok := byName["study-start"]; ok {
-		t.Fatal("expected /study-start command to be renamed to /recruit-close")
+	for _, name := range removed {
+		if _, ok := byName[name]; ok {
+			t.Fatalf("expected /%s command to be removed from the active slash-command surface", name)
+		}
 	}
-
-	closeCmd := byName["recruit-close"]
-	if closeCmd == nil {
-		t.Fatal("expected /recruit-close command to exist")
-	}
-	assertAdminCommand(t, closeCmd)
-	assertBranchAutocompleteOption(t, closeCmd)
-
-	statusCmd := byName["recruit-status"]
-	if statusCmd == nil {
-		t.Fatal("expected /recruit-status command to exist")
-	}
-	assertAdminCommand(t, statusCmd)
-	assertBranchAutocompleteOption(t, statusCmd)
-
-	nudgeCmd := byName["study-nudge"]
-	if nudgeCmd == nil {
-		t.Fatal("expected /study-nudge command to exist")
-	}
-	assertAdminCommand(t, nudgeCmd)
 
 	suggestCmd := byName["suggest"]
 	if suggestCmd == nil {
@@ -49,22 +37,23 @@ func TestCommandsUseRecruitCloseAndStatusWithoutVoteOrStudyStart(t *testing.T) {
 	if suggestCmd.Options[0].Name != "visibility" || !suggestCmd.Options[0].Required {
 		t.Fatalf("expected required visibility option, got %+v", suggestCmd.Options[0])
 	}
+
+	nudgeCmd := byName["study-nudge"]
+	if nudgeCmd == nil {
+		t.Fatal("expected /study-nudge command to exist")
+	}
+	assertAdminCommand(t, nudgeCmd)
+
+	for _, name := range []string{"help", "archive-study", "archive-all", "studies", "members"} {
+		if byName[name] == nil {
+			t.Fatalf("expected /%s command to remain available", name)
+		}
+	}
 }
 
 func assertAdminCommand(t *testing.T, cmd *discordgo.ApplicationCommand) {
 	t.Helper()
 	if cmd.DefaultMemberPermissions == nil || *cmd.DefaultMemberPermissions != discordgo.PermissionAdministrator {
 		t.Fatalf("expected %s to require administrator permissions, got %v", cmd.Name, cmd.DefaultMemberPermissions)
-	}
-}
-
-func assertBranchAutocompleteOption(t *testing.T, cmd *discordgo.ApplicationCommand) {
-	t.Helper()
-	if len(cmd.Options) != 1 {
-		t.Fatalf("expected %s to have exactly one branch option, got %d", cmd.Name, len(cmd.Options))
-	}
-	opt := cmd.Options[0]
-	if opt.Name != "branch" || opt.Type != discordgo.ApplicationCommandOptionString || !opt.Required || !opt.Autocomplete {
-		t.Fatalf("expected %s branch option to be required autocomplete string, got %+v", cmd.Name, opt)
 	}
 }
