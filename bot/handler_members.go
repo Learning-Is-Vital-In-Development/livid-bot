@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
@@ -43,8 +44,8 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 			return
 		}
 
-		embed := buildMembersEmbed(st.Name, members)
-		if err := editOriginalInteractionResponseEmbed(ctx, s, i, embed); err != nil {
+		content := buildMembersMessage(st.Name, members)
+		if err := editMembersInteractionResponse(ctx, s, i, content, memberMentionIDs(members)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond members command: %v", err)
 			return
 		}
@@ -71,40 +72,50 @@ func newMembersAutocompleteHandler(studyRepo *db.StudyRepository) func(ctx conte
 	}
 }
 
-func buildMembersEmbed(studyName string, members []study.StudyMember) *discordgo.MessageEmbed {
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("📚 %s 멤버", studyName),
-		Description: fmt.Sprintf("총 **%d명**", len(members)),
-		Color:       discordEmbedColorBlurple,
-		Footer:      &discordgo.MessageEmbedFooter{Text: "조회 기준 · /members"},
-	}
+func editMembersInteractionResponse(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, content string, mentionIDs []string) error {
+	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{
+			Users: mentionIDs,
+		},
+	}, discordgo.WithContext(ctx))
+	return err
+}
+
+func buildMembersMessage(studyName string, members []study.StudyMember) string {
 	if len(members) == 0 {
-		embed.Description = "등록된 멤버가 없습니다."
-		return embed
+		return fmt.Sprintf("📚 **%s 멤버**\n등록된 멤버가 없습니다.\n\n조회 기준 · /members", studyName)
 	}
 
-	visibleMembers := members
-	if len(visibleMembers) > discordEmbedMaxFields {
-		visibleMembers = members[:discordEmbedMaxFields-1]
+	var b strings.Builder
+	fmt.Fprintf(&b, "📚 **%s 멤버**\n총 **%d명**\n\n", studyName, len(members))
+
+	for idx, member := range visibleMembers(members) {
+		fmt.Fprintf(&b, "%d. %s\n참여일: `%s`\n", idx+1, memberMention(member), member.JoinedAt.Format("2006-01-02"))
 	}
 
-	for idx, member := range visibleMembers {
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   fmt.Sprintf("%d.", idx+1),
-			Value:  fmt.Sprintf("%s\n참여일: `%s`", memberMention(member), member.JoinedAt.Format("2006-01-02")),
-			Inline: true,
-		})
+	if omitted := len(members) - len(visibleMembers(members)); omitted > 0 {
+		fmt.Fprintf(&b, "… %d명이 더 있습니다.\n", omitted)
 	}
+	b.WriteString("\n조회 기준 · /members")
+	return b.String()
+}
 
-	if omitted := len(members) - len(visibleMembers); omitted > 0 {
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   "…",
-			Value:  fmt.Sprintf("%d명이 더 있습니다.", omitted),
-			Inline: true,
-		})
+func visibleMembers(members []study.StudyMember) []study.StudyMember {
+	if len(members) > discordEmbedMaxFields {
+		return members[:discordEmbedMaxFields-1]
 	}
+	return members
+}
 
-	return embed
+func memberMentionIDs(members []study.StudyMember) []string {
+	ids := make([]string, 0, len(members))
+	for _, member := range visibleMembers(members) {
+		if member.UserID != "" {
+			ids = append(ids, member.UserID)
+		}
+	}
+	return ids
 }
 
 func memberMention(member study.StudyMember) string {

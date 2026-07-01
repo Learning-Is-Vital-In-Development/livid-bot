@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -8,15 +9,13 @@ import (
 	"livid-bot/study"
 )
 
-func TestBuildMembersEmbed(t *testing.T) {
+func TestBuildMembersMessage(t *testing.T) {
 	joinedAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 
 	cases := []struct {
 		name        string
 		studyName   string
 		members     []study.StudyMember
-		wantDesc    string
-		wantFields  int
 		contains    []string
 		wantOmitted string
 	}{
@@ -27,34 +26,35 @@ func TestBuildMembersEmbed(t *testing.T) {
 				{StudyID: 1, UserID: "111", Username: "alice", JoinedAt: joinedAt},
 				{StudyID: 1, UserID: "222", Username: "bob", JoinedAt: joinedAt.AddDate(0, 0, 5)},
 			},
-			wantDesc:   "총 **2명**",
-			wantFields: 2,
 			contains: []string{
-				"<@111>",
+				"📚 **알고리즘 멤버**",
+				"총 **2명**",
+				"1. <@111>",
 				"참여일: `2026-03-01`",
-				"<@222>",
+				"2. <@222>",
 				"참여일: `2026-03-06`",
+				"조회 기준 · /members",
 			},
 		},
 		{
-			name:      "fallback to mention without username",
+			name:      "fallback to username without user id",
 			studyName: "알고리즘",
 			members: []study.StudyMember{
-				{StudyID: 1, UserID: "111", JoinedAt: joinedAt},
+				{StudyID: 1, Username: "alice", JoinedAt: joinedAt},
 			},
-			wantDesc:   "총 **1명**",
-			wantFields: 1,
 			contains: []string{
-				"<@111>",
+				"1. alice",
 				"참여일: `2026-03-01`",
 			},
 		},
 		{
-			name:       "empty",
-			studyName:  "알고리즘",
-			members:    nil,
-			wantDesc:   "등록된 멤버가 없습니다.",
-			wantFields: 0,
+			name:      "empty",
+			studyName: "알고리즘",
+			contains: []string{
+				"📚 **알고리즘 멤버**",
+				"등록된 멤버가 없습니다.",
+				"조회 기준 · /members",
+			},
 		},
 		{
 			name:      "field cap",
@@ -66,46 +66,36 @@ func TestBuildMembersEmbed(t *testing.T) {
 				}
 				return members
 			}(),
-			wantDesc:    "총 **30명**",
-			wantFields:  discordEmbedMaxFields,
+			contains: []string{
+				"총 **30명**",
+			},
 			wantOmitted: "6명이 더 있습니다.",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			embed := buildMembersEmbed(tc.studyName, tc.members)
-
-			if embed.Title != "📚 "+tc.studyName+" 멤버" {
-				t.Fatalf("unexpected title: %q", embed.Title)
-			}
-			if embed.Description != tc.wantDesc {
-				t.Fatalf("expected description %q, got %q", tc.wantDesc, embed.Description)
-			}
-			if len(embed.Fields) != tc.wantFields {
-				t.Fatalf("expected %d fields, got %d", tc.wantFields, len(embed.Fields))
-			}
-
-			combined := embed.Description
-			for _, field := range embed.Fields {
-				combined += "\n" + field.Name + "\n" + field.Value
-			}
+			message := buildMembersMessage(tc.studyName, tc.members)
 			for _, want := range tc.contains {
-				if !strings.Contains(combined, want) {
-					t.Fatalf("expected embed to contain %q, got: %s", want, combined)
+				if !strings.Contains(message, want) {
+					t.Fatalf("expected message to contain %q, got: %s", want, message)
 				}
 			}
-			if tc.wantOmitted != "" && !strings.Contains(combined, tc.wantOmitted) {
-				t.Fatalf("expected omitted marker %q, got: %s", tc.wantOmitted, combined)
-			}
-			if tc.name == "two members" {
-				if embed.Fields[0].Name != "1." {
-					t.Fatalf("expected mention in field value, got field name %q", embed.Fields[0].Name)
-				}
-				if !strings.Contains(embed.Fields[0].Value, "<@111>") {
-					t.Fatalf("expected first field value to contain mention, got %q", embed.Fields[0].Value)
-				}
+			if tc.wantOmitted != "" && !strings.Contains(message, tc.wantOmitted) {
+				t.Fatalf("expected omitted marker %q, got: %s", tc.wantOmitted, message)
 			}
 		})
+	}
+}
+
+func TestMemberMentionIDs(t *testing.T) {
+	members := []study.StudyMember{
+		{UserID: "111"},
+		{Username: "missing-id"},
+		{UserID: "222"},
+	}
+	want := []string{"111", "222"}
+	if got := memberMentionIDs(members); !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
