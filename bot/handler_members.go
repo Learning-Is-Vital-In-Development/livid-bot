@@ -90,8 +90,8 @@ func buildMembersEmbed(studyName string, members []study.StudyMember) *discordgo
 
 	for idx, member := range visibleMembers {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   truncateForDiscord(fmt.Sprintf("%d. %s", idx+1, memberDisplayName(member)), discordEmbedFieldNameLimit),
-			Value:  fmt.Sprintf("참여일: `%s`", member.JoinedAt.Format("2006-01-02")),
+			Name:   fmt.Sprintf("%d.", idx+1),
+			Value:  fmt.Sprintf("%s\n참여일: `%s`", memberMention(member), member.JoinedAt.Format("2006-01-02")),
 			Inline: true,
 		})
 	}
@@ -107,12 +107,12 @@ func buildMembersEmbed(studyName string, members []study.StudyMember) *discordgo
 	return embed
 }
 
-func memberDisplayName(member study.StudyMember) string {
-	if member.Username != "" {
-		return member.Username
-	}
+func memberMention(member study.StudyMember) string {
 	if member.UserID != "" {
 		return fmt.Sprintf("<@%s>", member.UserID)
+	}
+	if member.Username != "" {
+		return member.Username
 	}
 	return "unknown"
 }

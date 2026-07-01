@@ -30,9 +30,9 @@ func TestBuildMembersEmbed(t *testing.T) {
 			wantDesc:   "총 **2명**",
 			wantFields: 2,
 			contains: []string{
-				"alice",
+				"<@111>",
 				"참여일: `2026-03-01`",
-				"bob",
+				"<@222>",
 				"참여일: `2026-03-06`",
 			},
 		},
@@ -97,6 +97,14 @@ func TestBuildMembersEmbed(t *testing.T) {
 			}
 			if tc.wantOmitted != "" && !strings.Contains(combined, tc.wantOmitted) {
 				t.Fatalf("expected omitted marker %q, got: %s", tc.wantOmitted, combined)
+			}
+			if tc.name == "two members" {
+				if embed.Fields[0].Name != "1." {
+					t.Fatalf("expected mention in field value, got field name %q", embed.Fields[0].Name)
+				}
+				if !strings.Contains(embed.Fields[0].Value, "<@111>") {
+					t.Fatalf("expected first field value to contain mention, got %q", embed.Fields[0].Value)
+				}
 			}
 		})
 	}
