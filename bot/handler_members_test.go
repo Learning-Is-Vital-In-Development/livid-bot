@@ -30,10 +30,23 @@ func TestBuildMembersEmbed(t *testing.T) {
 			wantDesc:   "총 **2명**",
 			wantFields: 2,
 			contains: []string{
+				"alice",
+				"참여일: `2026-03-01`",
+				"bob",
+				"참여일: `2026-03-06`",
+			},
+		},
+		{
+			name:      "fallback to mention without username",
+			studyName: "알고리즘",
+			members: []study.StudyMember{
+				{StudyID: 1, UserID: "111", JoinedAt: joinedAt},
+			},
+			wantDesc:   "총 **1명**",
+			wantFields: 1,
+			contains: []string{
 				"<@111>",
 				"참여일: `2026-03-01`",
-				"<@222>",
-				"참여일: `2026-03-06`",
 			},
 		},
 		{

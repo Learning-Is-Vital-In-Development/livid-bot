@@ -108,11 +108,11 @@ func buildMembersEmbed(studyName string, members []study.StudyMember) *discordgo
 }
 
 func memberDisplayName(member study.StudyMember) string {
-	if member.UserID != "" {
-		return fmt.Sprintf("<@%s>", member.UserID)
-	}
 	if member.Username != "" {
 		return member.Username
+	}
+	if member.UserID != "" {
+		return fmt.Sprintf("<@%s>", member.UserID)
 	}
 	return "unknown"
 }
