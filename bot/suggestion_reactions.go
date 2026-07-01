@@ -119,7 +119,7 @@ func (h *SuggestionReactionHandler) openConfirmedSuggestion(ctx context.Context,
 			slog.Error("failed to add suggestion study role", "guild_id", guildID, "role_id", created.RoleID, "user_id", user.ID, "error", err)
 			continue
 		}
-		if err := h.memberRepo.AddMember(ctx, created.ID, user.ID, recruitReactionDisplayName(user)); err != nil {
+		if err := h.memberRepo.AddMember(ctx, created.ID, user.ID, reactionDisplayName(user)); err != nil {
 			slog.Error("failed to record suggestion study member", "study_id", created.ID, "user_id", user.ID, "error", err)
 		}
 	}

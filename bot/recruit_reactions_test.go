@@ -6,90 +6,43 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
-	"livid-bot/db"
 )
 
-func TestCollectRecruitSignupsFromMappingsPaginatesAndExcludesBot(t *testing.T) {
-	const botUserID = "bot-user"
-
-	humans := make([]*discordgo.User, 0, 101)
+func TestFetchAllReactionUsersPaginates(t *testing.T) {
+	users := make([]*discordgo.User, 0, 101)
 	for idx := 0; idx < 101; idx++ {
 		userID := fmt.Sprintf("user-%03d", idx)
-		humans = append(humans, &discordgo.User{ID: userID, Username: userID})
+		users = append(users, &discordgo.User{ID: userID, Username: userID})
 	}
 
-	client := &fakeRecruitReactionClient{
+	client := &fakeReactionUserClient{
 		reactions: map[string][]*discordgo.User{
-			reactionKey("recruit-channel", "recruit-message", "1️⃣"): append([]*discordgo.User{{ID: botUserID, Username: "bot"}}, humans...),
+			reactionKey("suggestion-channel", "suggestion-message", "🚀"): users,
 		},
 	}
 
-	summaries, err := collectRecruitSignupsFromMappings(context.Background(), client, []db.OpenRecruitMapping{
-		{
-			RecruitChannelID: "recruit-channel",
-			RecruitMessageID: "recruit-message",
-			StudyID:          10,
-			StudyName:        "Go Concurrency",
-			StudyChannelID:   "study-channel",
-			RoleID:           "role-go",
-			Emoji:            "1️⃣",
-		},
-	}, botUserID)
+	fetched, err := fetchAllReactionUsers(context.Background(), client, "suggestion-channel", "suggestion-message", "🚀")
 	if err != nil {
-		t.Fatalf("collect signups: %v", err)
+		t.Fatalf("fetch reaction users: %v", err)
 	}
 
-	if len(summaries) != 1 {
-		t.Fatalf("expected one summary, got %d", len(summaries))
+	if len(fetched) != 101 {
+		t.Fatalf("expected 101 users, got %d", len(fetched))
 	}
-	summary := summaries[0]
-	if summary.Count != 101 {
-		t.Fatalf("expected 101 human signups, got %d", summary.Count)
-	}
-	if summary.Users[0].ID != "user-000" || summary.Users[100].ID != "user-100" {
-		t.Fatalf("expected paginated human users in order, got first=%s last=%s", summary.Users[0].ID, summary.Users[100].ID)
+	if fetched[0].ID != "user-000" || fetched[100].ID != "user-100" {
+		t.Fatalf("expected paginated users in order, got first=%s last=%s", fetched[0].ID, fetched[100].ID)
 	}
 	if client.calls != 2 {
 		t.Fatalf("expected two paginated reaction API calls, got %d", client.calls)
 	}
 }
 
-func TestCollectRecruitSignupsFromMappingsDeduplicatesUsersPerStudy(t *testing.T) {
-	client := &fakeRecruitReactionClient{
-		reactions: map[string][]*discordgo.User{
-			reactionKey("recruit-channel-1", "recruit-message-1", "1️⃣"): {
-				{ID: "user-1", Username: "one"},
-				{ID: "user-2", Username: "two"},
-			},
-			reactionKey("recruit-channel-2", "recruit-message-2", "1️⃣"): {
-				{ID: "user-2", Username: "two"},
-				{ID: "user-3", Username: "three"},
-			},
-		},
-	}
-
-	summaries, err := collectRecruitSignupsFromMappings(context.Background(), client, []db.OpenRecruitMapping{
-		{RecruitChannelID: "recruit-channel-1", RecruitMessageID: "recruit-message-1", StudyID: 10, StudyName: "Go", RoleID: "role-go", Emoji: "1️⃣"},
-		{RecruitChannelID: "recruit-channel-2", RecruitMessageID: "recruit-message-2", StudyID: 10, StudyName: "Go", RoleID: "role-go", Emoji: "1️⃣"},
-	}, "bot-user")
-	if err != nil {
-		t.Fatalf("collect signups: %v", err)
-	}
-
-	if len(summaries) != 1 {
-		t.Fatalf("expected duplicate mappings for same study to be merged, got %d summaries", len(summaries))
-	}
-	if summaries[0].Count != 3 {
-		t.Fatalf("expected deduplicated signup count 3, got %d", summaries[0].Count)
-	}
-}
-
-type fakeRecruitReactionClient struct {
+type fakeReactionUserClient struct {
 	reactions map[string][]*discordgo.User
 	calls     int
 }
 
-func (f *fakeRecruitReactionClient) MessageReactions(channelID, messageID, emojiID string, limit int, beforeID, afterID string, options ...discordgo.RequestOption) ([]*discordgo.User, error) {
+func (f *fakeReactionUserClient) MessageReactions(channelID, messageID, emojiID string, limit int, beforeID, afterID string, options ...discordgo.RequestOption) ([]*discordgo.User, error) {
 	f.calls++
 	users := f.reactions[reactionKey(channelID, messageID, emojiID)]
 	start := 0

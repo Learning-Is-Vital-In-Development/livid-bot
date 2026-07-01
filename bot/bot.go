@@ -35,11 +35,6 @@ func Run(cfg Config) error {
 
 	configureDiscordSession(discord)
 
-	// Initialize reaction handler and load existing mappings from DB
-	reactionHandler := NewReactionHandler()
-	if err := reactionHandler.LoadFromDB(cfg.RecruitRepo); err != nil {
-		slog.Warn("failed to load reaction mappings", "error", err)
-	}
 	suggestionReactionHandler := NewSuggestionReactionHandler(cfg.SuggestionRepo, cfg.StudyRepo, cfg.MemberRepo)
 
 	commandHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
@@ -85,8 +80,6 @@ func Run(cfg Config) error {
 		}
 	})
 
-	discord.AddHandler(reactionHandler.OnReactionAdd)
-	discord.AddHandler(reactionHandler.OnReactionRemove)
 	discord.AddHandler(suggestionReactionHandler.OnReactionAdd)
 	discord.AddHandler(suggestionReactionHandler.OnReactionRemove)
 

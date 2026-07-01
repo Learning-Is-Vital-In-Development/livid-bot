@@ -10,51 +10,6 @@ import (
 	"livid-bot/study"
 )
 
-func newCreateStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-		options := i.ApplicationCommandData().Options
-		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
-		for _, opt := range options {
-			optionMap[opt.Name] = opt
-		}
-
-		branch := optionMap["branch"].StringValue()
-		if !isValidBranch(branch) {
-			respondError(ctx, s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
-			return
-		}
-
-		name := normalizeStudyName(optionMap["name"].StringValue())
-		if name == "" {
-			respondError(ctx, s, i, "Study name is empty after normalization. Please provide a valid name.")
-			return
-		}
-
-		description := ""
-		if opt, ok := optionMap["description"]; ok {
-			description = opt.StringValue()
-		}
-		logCommand(ctx, i, "start", "create-study requested branch=%s name=%s", branch, name)
-		if !deferInteractionResponse(ctx, s, i, false) {
-			return
-		}
-
-		created, err := createStudyResources(ctx, s, studyRepo, i.GuildID, branch, name, description)
-		if err != nil {
-			logCommand(ctx, i, "error", "failed to create study branch=%s name=%s err=%v", branch, name, err)
-			editDeferredError(ctx, s, i, "Failed to create study.")
-			return
-		}
-
-		if err := editOriginalInteractionResponse(ctx, s, i, fmt.Sprintf("Study **%s** created in branch **%s**!\nChannel: <#%s>\nRole: <@&%s>",
-			name, branch, created.ChannelID, created.RoleID)); err != nil {
-			logCommand(ctx, i, "error", "failed to respond create-study success: %v", err)
-			return
-		}
-		logCommand(ctx, i, "success", "created study branch=%s name=%s channel=%s role=%s", branch, name, created.ChannelID, created.RoleID)
-	}
-}
-
 func createStudyResources(ctx context.Context, s *discordgo.Session, studyRepo *db.StudyRepository, guildID, branch, name, description string) (study.Study, error) {
 	categoryID, channels, err := ensureCategoryID(ctx, s, guildID, "active")
 	if err != nil {
