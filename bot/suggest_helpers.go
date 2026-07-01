@@ -11,21 +11,17 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var (
-	suggestionDeadlineLocation = time.FixedZone("Asia/Seoul", 9*60*60)
-	errSuggestionDeadlinePast  = errors.New("suggestion deadline must be in the future")
-)
+var suggestionDeadlineLocation = time.FixedZone("Asia/Seoul", 9*60*60)
 
 const (
-	suggestionDiscussionChannelName  = "신규-스터디-논의"
-	suggestionAnnouncementThreadName = "스터디 제안 안내"
-	suggestionDefaultThreadName      = "익명 스터디 제안"
-	suggestionThreadNameLimit        = 100
-	suggestionModalPrefix            = "suggest_modal"
-	suggestionVisibilityAnonymous    = "anonymous"
-	suggestionVisibilityPublic       = "public"
-	suggestionDefaultDurationDays    = 14
-	suggestionMaxDurationDays        = 90
+	suggestionDiscussionChannelName = "신규-스터디-논의"
+	suggestionDefaultThreadName     = "익명 스터디 제안"
+	suggestionThreadNameLimit       = 100
+	suggestionModalPrefix           = "suggest_modal"
+	suggestionVisibilityAnonymous   = "anonymous"
+	suggestionVisibilityPublic      = "public"
+	suggestionDefaultDurationDays   = 14
+	suggestionMaxDurationDays       = 90
 )
 
 type suggestionModalOptions struct {
@@ -53,26 +49,8 @@ type suggestionMessageRef struct {
 	MessageID string
 }
 
-func parseSuggestionDeadline(raw string, now time.Time) (time.Time, error) {
-	parsed, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(raw), suggestionDeadlineLocation)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	closesAt := time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 23, 59, 59, 0, suggestionDeadlineLocation)
-	if !closesAt.After(now.In(suggestionDeadlineLocation)) {
-		return time.Time{}, errSuggestionDeadlinePast
-	}
-
-	return closesAt, nil
-}
-
 func suggestionDateLabel(t time.Time) string {
 	return t.In(suggestionDeadlineLocation).Format("2006-01-02")
-}
-
-func buildSuggestionAnnouncement(closesAt time.Time) string {
-	return fmt.Sprintf("📣 스터디 제안을 받습니다!\n마감일: %s 까지\n`/suggest` 로 익명 주제를 제안해주세요.", suggestionDateLabel(closesAt))
 }
 
 func buildSuggestionMessage(title, description string, opts suggestionPostOptions) string {
@@ -132,10 +110,6 @@ func findSuggestionDiscussionChannel(channels []*discordgo.Channel) *discordgo.C
 		}
 	}
 	return nil
-}
-
-func publishSuggestionAnnouncement(ctx context.Context, client suggestionDiscordClient, channelID string, closesAt time.Time) (suggestionMessageRef, error) {
-	return publishSuggestionContent(ctx, client, channelID, suggestionAnnouncementThreadName, buildSuggestionAnnouncement(closesAt))
 }
 
 func publishSuggestionMessage(ctx context.Context, client suggestionDiscordClient, channelID, title, description string, opts suggestionPostOptions) (suggestionMessageRef, error) {

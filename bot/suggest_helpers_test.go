@@ -10,36 +10,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func TestParseSuggestionDeadlineUsesKSTEndOfDay(t *testing.T) {
-	now := time.Date(2026, 3, 12, 9, 0, 0, 0, suggestionDeadlineLocation)
-
-	got, err := parseSuggestionDeadline("2026-03-13", now)
-	if err != nil {
-		t.Fatalf("expected deadline parse to succeed, got error: %v", err)
-	}
-
-	if got.Location().String() != suggestionDeadlineLocation.String() {
-		t.Fatalf("expected location %q, got %q", suggestionDeadlineLocation, got.Location())
-	}
-	if got.Hour() != 23 || got.Minute() != 59 || got.Second() != 59 {
-		t.Fatalf("expected end-of-day deadline, got %s", got)
-	}
-	if suggestionDateLabel(got) != "2026-03-13" {
-		t.Fatalf("expected formatted label 2026-03-13, got %q", suggestionDateLabel(got))
-	}
-}
-
-func TestParseSuggestionDeadlineRejectsPastOrElapsedDate(t *testing.T) {
-	now := time.Date(2026, 3, 12, 23, 59, 59, 0, suggestionDeadlineLocation)
-
-	if _, err := parseSuggestionDeadline("2026-03-12", now); !errors.Is(err, errSuggestionDeadlinePast) {
-		t.Fatalf("expected errSuggestionDeadlinePast for same-day elapsed deadline, got %v", err)
-	}
-	if _, err := parseSuggestionDeadline("2026-03-11", now); !errors.Is(err, errSuggestionDeadlinePast) {
-		t.Fatalf("expected errSuggestionDeadlinePast for past deadline, got %v", err)
-	}
-}
-
 func TestBuildSuggestionMessage(t *testing.T) {
 	expiresAt := time.Date(2026, 3, 26, 23, 59, 59, 0, suggestionDeadlineLocation)
 	withDescription := buildSuggestionMessage("Go 스터디", "동시성 중심", suggestionPostOptions{Visibility: suggestionVisibilityAnonymous, Threshold: 3, ExpiresAt: expiresAt})

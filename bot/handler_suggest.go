@@ -11,8 +11,6 @@ import (
 )
 
 type suggestionStore interface {
-	CreatePeriod(ctx context.Context, channelID string, closesAt time.Time) (*db.SuggestionPeriod, error)
-	GetActivePeriod(ctx context.Context) (*db.SuggestionPeriod, error)
 	CreateSuggestion(ctx context.Context, params db.CreateSuggestionParams) (*db.StudySuggestion, error)
 }
 
@@ -25,120 +23,9 @@ type suggestionModalDiscordClient interface {
 type suggestInteractionResponder interface {
 	deferEphemeral(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
 	editOriginal(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, content string) error
-	respondEphemeral(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, content string) error
 }
 
 type discordSuggestResponder struct{}
-
-func newSuggestStartHandler(suggestionRepo suggestionStore) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return newSuggestStartHandlerWithDeps(suggestionRepo, discordSuggestResponder{})
-}
-
-func newSuggestStartHandlerWithDeps(
-	suggestionRepo suggestionStore,
-	responder suggestInteractionResponder,
-) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if responder == nil {
-		responder = discordSuggestResponder{}
-	}
-
-	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-		logCommand(ctx, i, "start", "suggest-start command received")
-		if err := responder.deferEphemeral(ctx, s, i); err != nil {
-			logCommand(ctx, i, "error", "failed to defer suggest-start command: %v", err)
-			return
-		}
-
-		// Check 운영진 role
-		roles, err := s.GuildRoles(i.GuildID, discordgo.WithContext(ctx))
-		if err != nil {
-			editSuggestDeferredError(ctx, responder, s, i, "서버 역할 조회에 실패했습니다.")
-			return
-		}
-		var adminRoleID string
-		for _, r := range roles {
-			if r.Name == "운영진" {
-				adminRoleID = r.ID
-				break
-			}
-		}
-		if adminRoleID == "" {
-			editSuggestDeferredError(ctx, responder, s, i, "운영진 역할을 찾을 수 없습니다.")
-			return
-		}
-		hasRole := false
-		if i.Member != nil {
-			for _, rid := range i.Member.Roles {
-				if rid == adminRoleID {
-					hasRole = true
-					break
-				}
-			}
-		}
-		if !hasRole {
-			editSuggestDeferredError(ctx, responder, s, i, "운영진만 사용할 수 있는 명령어입니다.")
-			return
-		}
-
-		// Parse 마감일 option
-		options := i.ApplicationCommandData().Options
-		var closesAtStr string
-		for _, opt := range options {
-			if opt.Name == "deadline" {
-				closesAtStr = opt.StringValue()
-			}
-		}
-		closesAt, err := parseSuggestionDeadline(closesAtStr, time.Now())
-		switch {
-		case err == nil:
-		case errors.Is(err, errSuggestionDeadlinePast):
-			editSuggestDeferredError(ctx, responder, s, i, "마감일은 미래 날짜여야 합니다.")
-			return
-		default:
-			editSuggestDeferredError(ctx, responder, s, i, fmt.Sprintf("마감일 형식이 올바르지 않습니다 (YYYY-MM-DD): %s", closesAtStr))
-			return
-		}
-
-		// Find the fixed suggestion discussion channel.
-		channels, err := s.GuildChannels(i.GuildID, discordgo.WithContext(ctx))
-		if err != nil {
-			editSuggestDeferredError(ctx, responder, s, i, "채널 목록 조회에 실패했습니다.")
-			return
-		}
-		targetChannel := findSuggestionDiscussionChannel(channels)
-		if targetChannel == nil {
-			editSuggestDeferredError(ctx, responder, s, i, fmt.Sprintf("%s 채널을 찾을 수 없습니다.", suggestionDiscussionChannelName))
-			return
-		}
-		targetChannelID := targetChannel.ID
-
-		// Create period
-		period, err := suggestionRepo.CreatePeriod(ctx, targetChannelID, closesAt)
-		if err != nil {
-			if errors.Is(err, db.ErrActiveSuggestionPeriodExists) {
-				existing, getErr := suggestionRepo.GetActivePeriod(ctx)
-				if getErr == nil && existing != nil {
-					editSuggestDeferredError(ctx, responder, s, i, fmt.Sprintf("이미 활성 제안 기간이 있습니다 (마감: %s).", suggestionDateLabel(existing.ClosesAt)))
-					return
-				}
-				editSuggestDeferredError(ctx, responder, s, i, "이미 활성 제안 기간이 있습니다.")
-				return
-			}
-			editSuggestDeferredError(ctx, responder, s, i, "제안 기간 생성에 실패했습니다.")
-			return
-		}
-
-		// Post announcement
-		if _, err := publishSuggestionAnnouncement(ctx, s, targetChannelID, period.ClosesAt); err != nil {
-			logCommand(ctx, i, "warn", "failed to send announcement: %v", err)
-		}
-
-		logCommand(ctx, i, "done", "suggestion period created id=%d closes_at=%s", period.ID, suggestionDateLabel(period.ClosesAt))
-		if err := responder.editOriginal(ctx, s, i, fmt.Sprintf("✅ 스터디 제안 기간이 시작되었습니다. 마감: %s", suggestionDateLabel(period.ClosesAt))); err != nil {
-			logCommand(ctx, i, "error", "failed to edit suggest-start response: %v", err)
-		}
-	}
-}
 
 func newSuggestHandler(suggestionRepo suggestionStore) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -350,15 +237,4 @@ func (discordSuggestResponder) editOriginal(ctx context.Context, s *discordgo.Se
 		AllowedMentions: &discordgo.MessageAllowedMentions{},
 	}, discordgo.WithContext(ctx))
 	return err
-}
-
-func (discordSuggestResponder) respondEphemeral(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
-	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content:         content,
-			Flags:           discordgo.MessageFlagsEphemeral,
-			AllowedMentions: &discordgo.MessageAllowedMentions{},
-		},
-	}, discordgo.WithContext(ctx))
 }

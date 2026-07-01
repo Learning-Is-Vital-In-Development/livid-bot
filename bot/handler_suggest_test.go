@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/db"
@@ -63,11 +62,9 @@ func TestInteractionCommandNameUsesModalCustomID(t *testing.T) {
 }
 
 type fakeSuggestStore struct {
-	order        *[]string
-	activePeriod *db.SuggestionPeriod
-	suggestion   *db.StudySuggestion
+	order      *[]string
+	suggestion *db.StudySuggestion
 
-	getErr    error
 	createErr error
 
 	createdPeriodID  int64
@@ -81,18 +78,6 @@ func (f *fakeSuggestStore) appendOrder(value string) {
 	if f.order != nil {
 		*f.order = append(*f.order, value)
 	}
-}
-
-func (f *fakeSuggestStore) CreatePeriod(context.Context, string, time.Time) (*db.SuggestionPeriod, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (f *fakeSuggestStore) GetActivePeriod(context.Context) (*db.SuggestionPeriod, error) {
-	f.appendOrder("get-active-period")
-	if f.getErr != nil {
-		return nil, f.getErr
-	}
-	return f.activePeriod, nil
 }
 
 func (f *fakeSuggestStore) CreateSuggestion(_ context.Context, params db.CreateSuggestionParams) (*db.StudySuggestion, error) {
@@ -168,7 +153,6 @@ type fakeSuggestResponder struct {
 	order         *[]string
 	deferCalls    int
 	editCalls     int
-	respondCalls  int
 	editedContent string
 }
 
@@ -186,11 +170,6 @@ func (f *fakeSuggestResponder) editOriginal(_ context.Context, _ *discordgo.Sess
 	}
 	f.editCalls++
 	f.editedContent = content
-	return nil
-}
-
-func (f *fakeSuggestResponder) respondEphemeral(context.Context, *discordgo.Session, *discordgo.InteractionCreate, string) error {
-	f.respondCalls++
 	return nil
 }
 
