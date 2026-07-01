@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -30,6 +31,9 @@ type archiveResult struct {
 func archiveStudy(ctx context.Context, s *discordgo.Session, studyRepo *db.StudyRepository, guildID string, st study.Study) (archiveResult, error) {
 	channel, err := s.Channel(st.ChannelID, discordgo.WithContext(ctx))
 	if err != nil {
+		if isDiscordAPIErrorCode(err, discordgo.ErrCodeUnknownChannel) {
+			return archiveStudyWithMissingChannel(ctx, s, studyRepo, guildID, st)
+		}
 		return archiveResult{}, fmt.Errorf("load channel %s for study %q: %w", st.ChannelID, st.Name, err)
 	}
 	originalParentID := channel.ParentID
@@ -58,13 +62,42 @@ func archiveStudy(ctx context.Context, s *discordgo.Session, studyRepo *db.Study
 		return archiveResult{}, fmt.Errorf("archive study %q in DB (channel rolled back): %w", st.Name, err)
 	}
 
-	warning := ""
-	if err := s.GuildRoleDelete(guildID, st.RoleID, discordgo.WithContext(ctx)); err != nil {
-		slog.Warn("failed to delete role for archived study", "role_id", st.RoleID, "study_name", st.Name, "error", err)
-		warning = "role deletion failed"
-	}
+	warning := deleteArchivedStudyRole(ctx, s, guildID, st)
 
 	return archiveResult{CategoryName: targetCategoryName, Warning: warning}, nil
+}
+
+func archiveStudyWithMissingChannel(ctx context.Context, s *discordgo.Session, studyRepo *db.StudyRepository, guildID string, st study.Study) (archiveResult, error) {
+	if err := studyRepo.ArchiveByID(ctx, st.ID); err != nil {
+		return archiveResult{}, fmt.Errorf("archive study %q in DB after missing channel %s: %w", st.Name, st.ChannelID, err)
+	}
+
+	warnings := []string{"channel already missing; archived DB row only"}
+	if warning := deleteArchivedStudyRole(ctx, s, guildID, st); warning != "" {
+		warnings = append(warnings, warning)
+	}
+	slog.Warn("archived study with missing Discord channel", "study_id", st.ID, "study_name", st.Name, "channel_id", st.ChannelID)
+	return archiveResult{Warning: strings.Join(warnings, "; ")}, nil
+}
+
+func deleteArchivedStudyRole(ctx context.Context, s *discordgo.Session, guildID string, st study.Study) string {
+	if st.RoleID == "" {
+		return ""
+	}
+	if err := s.GuildRoleDelete(guildID, st.RoleID, discordgo.WithContext(ctx)); err != nil {
+		if isDiscordAPIErrorCode(err, discordgo.ErrCodeUnknownRole) {
+			slog.Info("role for archived study was already missing", "role_id", st.RoleID, "study_name", st.Name)
+			return ""
+		}
+		slog.Warn("failed to delete role for archived study", "role_id", st.RoleID, "study_name", st.Name, "error", err)
+		return "role deletion failed; remove it manually if needed"
+	}
+	return ""
+}
+
+func isDiscordAPIErrorCode(err error, code int) bool {
+	var restErr *discordgo.RESTError
+	return errors.As(err, &restErr) && restErr.Message != nil && restErr.Message.Code == code
 }
 
 func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -100,12 +133,7 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Cont
 			return
 		}
 
-		warning := ""
-		if result.Warning != "" {
-			warning = fmt.Sprintf("\nWarning: %s. Please remove it manually if needed.", result.Warning)
-		}
-
-		if err := editOriginalInteractionResponse(ctx, s, i, fmt.Sprintf("Study **%s** has been archived and moved to **%s**.%s", st.Name, result.CategoryName, warning)); err != nil {
+		if err := editOriginalInteractionResponse(ctx, s, i, buildArchiveStudySuccessMessage(st.Name, result)); err != nil {
 			logCommand(ctx, i, "error", "failed to respond archive-study success: %v", err)
 			return
 		}
@@ -213,6 +241,21 @@ func rollbackChannelParent(ctx context.Context, s *discordgo.Session, channelID,
 		return fmt.Errorf("rollback channel parent: %w", err)
 	}
 	return nil
+}
+
+func buildArchiveStudySuccessMessage(studyName string, result archiveResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Study **%s** has been archived", studyName)
+	if result.CategoryName != "" {
+		fmt.Fprintf(&b, " and moved to **%s**", result.CategoryName)
+	} else {
+		b.WriteString(" in DB")
+	}
+	b.WriteString(".")
+	if result.Warning != "" {
+		fmt.Fprintf(&b, "\nWarning: %s.", result.Warning)
+	}
+	return truncateForDiscord(b.String(), discordMessageLimit)
 }
 
 func buildArchiveAllSummary(total, success int, failures []archiveFailure, warnings []string) string {

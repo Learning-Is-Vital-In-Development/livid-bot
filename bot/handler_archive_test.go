@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -8,6 +10,40 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"livid-bot/study"
 )
+
+func TestBuildArchiveStudySuccessMessage(t *testing.T) {
+	moved := buildArchiveStudySuccessMessage("study-a", archiveResult{CategoryName: "archive2"})
+	if moved != "Study **study-a** has been archived and moved to **archive2**." {
+		t.Fatalf("unexpected moved message: %s", moved)
+	}
+
+	missing := buildArchiveStudySuccessMessage("study-b", archiveResult{Warning: "channel already missing; archived DB row only"})
+	if !strings.Contains(missing, "Study **study-b** has been archived in DB.") {
+		t.Fatalf("expected DB-only archive message: %s", missing)
+	}
+	if !strings.Contains(missing, "Warning: channel already missing; archived DB row only.") {
+		t.Fatalf("expected missing-channel warning: %s", missing)
+	}
+}
+
+func TestIsDiscordAPIErrorCode(t *testing.T) {
+	restErr := &discordgo.RESTError{
+		Response:     &http.Response{Status: "404 Not Found"},
+		ResponseBody: []byte(`{"message":"Unknown Channel","code":10003}`),
+		Message:      &discordgo.APIErrorMessage{Code: discordgo.ErrCodeUnknownChannel, Message: "Unknown Channel"},
+	}
+	wrapped := fmt.Errorf("wrapped: %w", restErr)
+
+	if !isDiscordAPIErrorCode(wrapped, discordgo.ErrCodeUnknownChannel) {
+		t.Fatal("expected wrapped unknown-channel REST error to match")
+	}
+	if isDiscordAPIErrorCode(wrapped, discordgo.ErrCodeUnknownRole) {
+		t.Fatal("did not expect unknown-channel error to match unknown-role code")
+	}
+	if isDiscordAPIErrorCode(fmt.Errorf("plain error"), discordgo.ErrCodeUnknownChannel) {
+		t.Fatal("did not expect non-REST error to match Discord API code")
+	}
+}
 
 func TestBuildArchiveAllSummary(t *testing.T) {
 	failures := []archiveFailure{
