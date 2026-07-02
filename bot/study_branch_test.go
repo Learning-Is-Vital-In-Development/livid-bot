@@ -61,6 +61,7 @@ func TestBuildStudyChannelName(t *testing.T) {
 		{branch: "26-2", name: "자바 스터디", expected: "26-2-자바-스터디"},
 		{branch: "26-2", name: "Go 언어", expected: "26-2-go-언어"},
 		{branch: "", name: "Go 언어", expected: "go-언어"},
+		{branch: "", name: "🔥🔥🔥", expected: "study"},
 	}
 
 	for _, tc := range testCases {

@@ -30,6 +30,39 @@ func (r *StudyRepository) Create(ctx context.Context, branch, name, description,
 	return s, nil
 }
 
+func (r *StudyRepository) NextAvailableName(ctx context.Context, branch, name string) (string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT name FROM studies WHERE branch = $1`, branch)
+	if err != nil {
+		return "", fmt.Errorf("find study names by branch: %w", err)
+	}
+	defer rows.Close()
+
+	existing := make(map[string]struct{})
+	for rows.Next() {
+		var existingName string
+		if err := rows.Scan(&existingName); err != nil {
+			return "", fmt.Errorf("scan study name: %w", err)
+		}
+		existing[existingName] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return uniqueStudyName(name, existing), nil
+}
+
+func uniqueStudyName(base string, existing map[string]struct{}) string {
+	if _, ok := existing[base]; !ok {
+		return base
+	}
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if _, ok := existing[candidate]; !ok {
+			return candidate
+		}
+	}
+}
+
 func (r *StudyRepository) FindAllActive(ctx context.Context) ([]study.Study, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, branch, name, description, channel_id, role_id, created_at, status

@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -17,6 +17,7 @@ type suggestionStore interface {
 type suggestionModalDiscordClient interface {
 	suggestionDiscordClient
 	ChannelMessageDelete(channelID, messageID string, options ...discordgo.RequestOption) error
+	GuildChannels(guildID string, options ...discordgo.RequestOption) ([]*discordgo.Channel, error)
 	MessageReactionAdd(channelID, messageID, emojiID string, options ...discordgo.RequestOption) error
 }
 
@@ -27,23 +28,17 @@ type suggestInteractionResponder interface {
 
 type discordSuggestResponder struct{}
 
-func newSuggestHandler(suggestionRepo suggestionStore) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newSuggestHandler(suggestionRepo suggestionStore, suggestionChannelID string) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	suggestionChannelID = strings.TrimSpace(suggestionChannelID)
+	if suggestionChannelID == "" {
+		suggestionChannelID = suggestionChannelAuto
+	}
+
 	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		logCommand(ctx, i, "start", "suggest command received")
 
-		channels, err := s.GuildChannels(i.GuildID, discordgo.WithContext(ctx))
-		if err != nil {
-			respondError(ctx, s, i, "채널 목록 조회에 실패했습니다.")
-			return
-		}
-		targetChannel := findSuggestionDiscussionChannel(channels)
-		if targetChannel == nil {
-			respondError(ctx, s, i, fmt.Sprintf("%s 채널을 찾을 수 없습니다.", suggestionDiscussionChannelName))
-			return
-		}
-
 		modalOpts := parseSuggestCommandOptions(i.ApplicationCommandData().Options)
-		modalOpts.ChannelID = targetChannel.ID
+		modalOpts.ChannelID = suggestionChannelID
 
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseModal,
@@ -145,6 +140,12 @@ func handleSuggestModalSubmit(
 		editSuggestDeferredError(ctx, responder, s, i, "제안 설정을 확인할 수 없습니다. 다시 시도해주세요.")
 		return
 	}
+	channelID, err := resolveSuggestionChannelID(ctx, client, i.GuildID, modalOpts.ChannelID)
+	if err != nil {
+		logCommand(ctx, i, "error", "failed to resolve suggestion channel: %v", err)
+		editSuggestDeferredError(ctx, responder, s, i, "제안 채널을 찾을 수 없습니다.")
+		return
+	}
 
 	data := i.ModalSubmitData()
 	title := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
@@ -152,7 +153,7 @@ func handleSuggestModalSubmit(
 	expiresAt := suggestionExpiresAtFromDuration(time.Now(), modalOpts.DurationDays)
 	proposerUserID, proposerDisplayName := suggestProposer(i)
 
-	postRef, err := publishSuggestionMessage(ctx, client, modalOpts.ChannelID, title, description, suggestionPostOptions{
+	postRef, err := publishSuggestionMessage(ctx, client, channelID, title, description, suggestionPostOptions{
 		Visibility:     modalOpts.Visibility,
 		ProposerUserID: proposerUserID,
 		Threshold:      modalOpts.Threshold,
@@ -195,6 +196,21 @@ func handleSuggestModalSubmit(
 	if err := responder.editOriginal(ctx, s, i, "제안이 등록되었습니다!"); err != nil {
 		logCommand(ctx, i, "error", "failed to edit suggest modal response: %v", err)
 	}
+}
+
+func resolveSuggestionChannelID(ctx context.Context, client suggestionModalDiscordClient, guildID, channelID string) (string, error) {
+	if channelID != "" && channelID != suggestionChannelAuto {
+		return channelID, nil
+	}
+	channels, err := client.GuildChannels(guildID, discordgo.WithContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	target := findSuggestionDiscussionChannel(channels)
+	if target == nil {
+		return "", errors.New("suggestion discussion channel not found")
+	}
+	return target.ID, nil
 }
 
 func suggestProposer(i *discordgo.InteractionCreate) (string, string) {

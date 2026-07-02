@@ -16,12 +16,12 @@ func newStudiesHandler(studyRepo *db.StudyRepository) func(ctx context.Context, 
 		logCommand(ctx, i, "start", "studies requested branch=%q status=%q", branch, status)
 
 		if branch != "" && !isValidBranch(branch) {
-			respondError(ctx, s, i, "Invalid branch format. Use YY-Q with Q in 1~4 (e.g. 26-2).")
+			respondError(ctx, s, i, "분기 형식이 올바르지 않습니다. YY-Q 형식을 사용해주세요. 예: 26-2")
 			return
 		}
 
 		if status != "active" && status != "archived" {
-			respondError(ctx, s, i, "Invalid status. Use one of: active, archived.")
+			respondError(ctx, s, i, "상태 값이 올바르지 않습니다. active 또는 archived를 사용해주세요.")
 			return
 		}
 		if !deferInteractionResponse(ctx, s, i, true) {
@@ -31,7 +31,7 @@ func newStudiesHandler(studyRepo *db.StudyRepository) func(ctx context.Context, 
 		studies, err := studyRepo.FindByFilters(ctx, branch, status)
 		if err != nil {
 			logCommand(ctx, i, "error", "failed to load studies branch=%q status=%q err=%v", branch, status, err)
-			editDeferredError(ctx, s, i, "Failed to load studies.")
+			editDeferredError(ctx, s, i, "스터디 목록을 불러오지 못했습니다.")
 			return
 		}
 

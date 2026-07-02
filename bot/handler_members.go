@@ -21,7 +21,7 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 
 		opt, ok := optionMap["channel"]
 		if !ok {
-			respondError(ctx, s, i, "Missing required option: channel.")
+			respondError(ctx, s, i, "필수 옵션이 없습니다: channel")
 			return
 		}
 		channelID := opt.StringValue()
@@ -33,14 +33,14 @@ func newMembersHandler(studyRepo *db.StudyRepository, memberRepo *db.MemberRepos
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
 			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
-			editDeferredError(ctx, s, i, "No study found for the selected channel.")
+			editDeferredError(ctx, s, i, "선택한 채널의 스터디를 찾을 수 없습니다.")
 			return
 		}
 
 		members, err := memberRepo.FindActiveByStudyID(ctx, st.ID)
 		if err != nil {
 			slog.Error("failed to find members for study", "study_id", st.ID, "study_name", st.Name, "error", err)
-			editDeferredError(ctx, s, i, "Failed to load study members.")
+			editDeferredError(ctx, s, i, "스터디 멤버 목록을 불러오지 못했습니다.")
 			return
 		}
 
@@ -125,5 +125,5 @@ func memberMention(member study.StudyMember) string {
 	if member.Username != "" {
 		return member.Username
 	}
-	return "unknown"
+	return "알 수 없음"
 }

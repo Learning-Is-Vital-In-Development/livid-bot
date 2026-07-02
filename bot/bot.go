@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -15,15 +17,22 @@ import (
 )
 
 type Config struct {
-	BotToken       string
-	ApplicationID  string
-	GuildID        string
-	StudyRepo      *db.StudyRepository
-	MemberRepo     *db.MemberRepository
-	RecruitRepo    *db.RecruitRepository
-	AuditRepo      CommandAuditStore
-	SuggestionRepo *db.SuggestionRepository
+	BotToken                        string
+	ApplicationID                   string
+	GuildID                         string
+	SuggestionChannelID             string
+	StudyNudgeAnnouncementChannelID string
+	StudyRepo                       *db.StudyRepository
+	MemberRepo                      *db.MemberRepository
+	AuditRepo                       CommandAuditStore
+	SuggestionRepo                  *db.SuggestionRepository
 }
+
+const (
+	interactionTimeout = 10 * time.Second
+	reactionTimeout    = 10 * time.Second
+	discordHTTPTimeout = 15 * time.Second
+)
 
 func Run(cfg Config) error {
 	setCommandAuditStore(cfg.AuditRepo)
@@ -43,8 +52,8 @@ func Run(cfg Config) error {
 		"studies":       newStudiesHandler(cfg.StudyRepo),
 		"members":       newMembersHandler(cfg.StudyRepo, cfg.MemberRepo),
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
-		"suggest":       newSuggestHandler(cfg.SuggestionRepo),
-		"study-nudge":   newStudyNudgeHandler(cfg.SuggestionRepo),
+		"suggest":       newSuggestHandler(cfg.SuggestionRepo, cfg.SuggestionChannelID),
+		"study-nudge":   newStudyNudgeHandler(cfg.SuggestionRepo, cfg.StudyNudgeAnnouncementChannelID),
 	}
 	autocompleteHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelpAutocomplete,
@@ -53,7 +62,9 @@ func Run(cfg Config) error {
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ctx, span := startInteractionSpan(context.Background(), i)
+		ctx, cancel := context.WithTimeout(context.Background(), interactionTimeout)
+		defer cancel()
+		ctx, span := startInteractionSpan(ctx, i)
 		defer span.End()
 
 		switch i.Type {
@@ -98,7 +109,8 @@ func Run(cfg Config) error {
 
 	slog.Info("bot running; press CTRL + C to exit")
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(c)
 	<-c
 
 	return nil
@@ -108,11 +120,14 @@ func configureDiscordSession(discord *discordgo.Session) {
 	if discord == nil {
 		return
 	}
-	if discord.Client == nil {
-		discord.Client = http.DefaultClient
+	if discord.Client == nil || discord.Client == http.DefaultClient {
+		discord.Client = &http.Client{Transport: http.DefaultTransport, Timeout: discordHTTPTimeout}
 	}
 	if discord.Client.Transport == nil {
 		discord.Client.Transport = http.DefaultTransport
+	}
+	if discord.Client.Timeout == 0 {
+		discord.Client.Timeout = discordHTTPTimeout
 	}
 	discord.Client.Transport = otelhttp.NewTransport(discord.Client.Transport)
 	discord.Identify.Intents = discordgo.IntentsGuilds |

@@ -54,14 +54,15 @@ func main() {
 	}
 
 	cfg := bot.Config{
-		BotToken:       token,
-		ApplicationID:  appID,
-		GuildID:        guildID,
-		StudyRepo:      db.NewStudyRepository(pool),
-		MemberRepo:     db.NewMemberRepository(pool),
-		RecruitRepo:    db.NewRecruitRepository(pool),
-		AuditRepo:      db.NewCommandAuditRepository(pool),
-		SuggestionRepo: db.NewSuggestionRepository(pool),
+		BotToken:                        token,
+		ApplicationID:                   appID,
+		GuildID:                         guildID,
+		SuggestionChannelID:             os.Getenv("SUGGESTION_CHANNEL_ID"),
+		StudyNudgeAnnouncementChannelID: os.Getenv("STUDY_NUDGE_ANNOUNCEMENT_CHANNEL_ID"),
+		StudyRepo:                       db.NewStudyRepository(pool),
+		MemberRepo:                      db.NewMemberRepository(pool),
+		AuditRepo:                       db.NewCommandAuditRepository(pool),
+		SuggestionRepo:                  db.NewSuggestionRepository(pool),
 	}
 
 	if err := bot.Run(cfg); err != nil {

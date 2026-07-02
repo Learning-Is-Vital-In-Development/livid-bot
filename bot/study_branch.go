@@ -12,7 +12,10 @@ import (
 var branchPattern = regexp.MustCompile(`^[0-9]{2}-[1-4]$`)
 var prefixedStudyNamePattern = regexp.MustCompile(`^[0-9]{2}-[1-4]-(.*)$`)
 
-const maxChannelNameRunes = 100
+const (
+	defaultStudyChannelName = "study"
+	maxChannelNameRunes     = 100
+)
 
 func isValidBranch(branch string) bool {
 	return branchPattern.MatchString(strings.TrimSpace(branch))
@@ -76,5 +79,8 @@ func sanitizeChannelName(name string) string {
 		runeCount++
 	}
 
+	if b.Len() == 0 {
+		return defaultStudyChannelName
+	}
 	return b.String()
 }

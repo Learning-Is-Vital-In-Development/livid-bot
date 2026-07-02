@@ -9,13 +9,18 @@ import (
 	"livid-bot/db"
 )
 
-const studyNudgeAnnouncementChannelID = "1244507245136314369"
+const defaultStudyNudgeAnnouncementChannelID = "1244507245136314369"
 
 type studyNudgeStore interface {
 	ListOpenSuggestionsForNudge(ctx context.Context) ([]*db.StudySuggestion, error)
 }
 
-func newStudyNudgeHandler(suggestionRepo studyNudgeStore) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+func newStudyNudgeHandler(suggestionRepo studyNudgeStore, announcementChannelID string) func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	announcementChannelID = strings.TrimSpace(announcementChannelID)
+	if announcementChannelID == "" {
+		announcementChannelID = defaultStudyNudgeAnnouncementChannelID
+	}
+
 	return func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 		logCommand(ctx, i, "start", "study-nudge requested")
 		if !deferInteractionResponse(ctx, s, i, true) {
@@ -34,7 +39,7 @@ func newStudyNudgeHandler(suggestionRepo studyNudgeStore) func(ctx context.Conte
 		}
 
 		content := buildStudyNudgeMessage(i.GuildID, suggestions)
-		if _, err := s.ChannelMessageSendComplex(studyNudgeAnnouncementChannelID, &discordgo.MessageSend{
+		if _, err := s.ChannelMessageSendComplex(announcementChannelID, &discordgo.MessageSend{
 			Content: content,
 			AllowedMentions: &discordgo.MessageAllowedMentions{
 				Parse: []discordgo.AllowedMentionType{discordgo.AllowedMentionTypeEveryone},

@@ -18,6 +18,7 @@ const (
 	suggestionDefaultThreadName     = "익명 스터디 제안"
 	suggestionThreadNameLimit       = 100
 	suggestionModalPrefix           = "suggest_modal"
+	suggestionChannelAuto           = "auto"
 	suggestionVisibilityAnonymous   = "anonymous"
 	suggestionVisibilityPublic      = "public"
 	suggestionDefaultDurationDays   = 14

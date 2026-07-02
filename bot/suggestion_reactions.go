@@ -40,7 +40,9 @@ func (h *SuggestionReactionHandler) handleReaction(s *discordgo.Session, reactio
 		return
 	}
 
-	ctx, span := startReactionSpan(context.Background(), "suggestion.reaction", reaction)
+	ctx, cancel := context.WithTimeout(context.Background(), reactionTimeout)
+	defer cancel()
+	ctx, span := startReactionSpan(ctx, "suggestion.reaction", reaction)
 	defer span.End()
 
 	suggestion, err := h.suggestionRepo.GetOpenSuggestionByMessageRef(ctx, reaction.ChannelID, reaction.MessageID)

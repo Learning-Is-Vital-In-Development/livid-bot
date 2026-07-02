@@ -14,4 +14,7 @@ func TestConfigureDiscordSessionDoesNotRequestVoiceStateIntent(t *testing.T) {
 	if session.Identify.Intents&discordgo.IntentsGuildVoiceStates != 0 {
 		t.Fatalf("did not expect guild voice state intent, got %v", session.Identify.Intents)
 	}
+	if session.Client == nil || session.Client.Timeout != discordHTTPTimeout {
+		t.Fatalf("expected discord HTTP timeout %s, got %+v", discordHTTPTimeout, session.Client)
+	}
 }

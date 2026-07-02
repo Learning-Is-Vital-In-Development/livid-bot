@@ -54,6 +54,35 @@ func TestSuggestModalHandlerDefersBeforePublishingAndEditsOriginal(t *testing.T)
 	}
 }
 
+func TestSuggestModalHandlerResolvesAutoChannelAfterDeferring(t *testing.T) {
+	order := []string{}
+	store := &fakeSuggestStore{order: &order, suggestion: &db.StudySuggestion{ID: 42}}
+	client := &fakeSuggestModalDiscordClient{
+		order: &order,
+		guildChannels: []*discordgo.Channel{
+			{ID: "forum", Name: suggestionDiscussionChannelName, Type: discordgo.ChannelTypeGuildForum},
+		},
+		channels: map[string]*discordgo.Channel{
+			"forum": {ID: "forum", Type: discordgo.ChannelTypeGuildForum},
+		},
+		forumThread: &discordgo.Channel{ID: "thread", LastMessageID: "starter-message"},
+	}
+	responder := &fakeSuggestResponder{order: &order}
+
+	handler := newSuggestModalHandlerWithDeps(store, responder, client)
+	handler(context.Background(), nil, newSuggestModalInteractionForTestWithCustomID("Go 스터디", "", "suggest_modal:anonymous:3:14:auto"))
+
+	wantOrder := []string{"defer", "list-channels", "load-channel", "create-forum-thread", "create-suggestion", "add-reaction", "edit"}
+	if len(order) != len(wantOrder) {
+		t.Fatalf("expected order %v, got %v", wantOrder, order)
+	}
+	for idx := range wantOrder {
+		if order[idx] != wantOrder[idx] {
+			t.Fatalf("expected order %v, got %v", wantOrder, order)
+		}
+	}
+}
+
 func TestInteractionCommandNameUsesModalCustomID(t *testing.T) {
 	got := interactionCommandName(newSuggestModalInteractionForTest("Go 스터디", ""))
 	if got != "suggest_modal:anonymous:3:14:forum" {
@@ -96,9 +125,10 @@ func (f *fakeSuggestStore) CreateSuggestion(_ context.Context, params db.CreateS
 type fakeSuggestModalDiscordClient struct {
 	order *[]string
 
-	channels    map[string]*discordgo.Channel
-	forumThread *discordgo.Channel
-	sentMessage *discordgo.Message
+	guildChannels []*discordgo.Channel
+	channels      map[string]*discordgo.Channel
+	forumThread   *discordgo.Channel
+	sentMessage   *discordgo.Message
 
 	reactionChannelID string
 	reactionMessageID string
@@ -118,6 +148,11 @@ func (f *fakeSuggestModalDiscordClient) Channel(channelID string, options ...dis
 		return nil, errors.New("channel not found")
 	}
 	return ch, nil
+}
+
+func (f *fakeSuggestModalDiscordClient) GuildChannels(guildID string, options ...discordgo.RequestOption) ([]*discordgo.Channel, error) {
+	f.appendOrder("list-channels")
+	return f.guildChannels, nil
 }
 
 func (f *fakeSuggestModalDiscordClient) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error) {
@@ -174,6 +209,10 @@ func (f *fakeSuggestResponder) editOriginal(_ context.Context, _ *discordgo.Sess
 }
 
 func newSuggestModalInteractionForTest(title, description string) *discordgo.InteractionCreate {
+	return newSuggestModalInteractionForTestWithCustomID(title, description, "suggest_modal:anonymous:3:14:forum")
+}
+
+func newSuggestModalInteractionForTestWithCustomID(title, description, customID string) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
 		ID:      "interaction-1",
 		AppID:   "app-1",
@@ -181,7 +220,7 @@ func newSuggestModalInteractionForTest(title, description string) *discordgo.Int
 		Type:    discordgo.InteractionModalSubmit,
 		GuildID: "guild-1",
 		Data: discordgo.ModalSubmitInteractionData{
-			CustomID: "suggest_modal:anonymous:3:14:forum",
+			CustomID: customID,
 			Components: []discordgo.MessageComponent{
 				&discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 					&discordgo.TextInput{CustomID: "title", Value: title},

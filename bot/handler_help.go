@@ -287,22 +287,18 @@ func localizedCommandDescription(cmd *discordgo.ApplicationCommand) string {
 	switch cmd.Name {
 	case "help":
 		return "사용 가능한 명령어 안내"
-	case "create-study":
-		return "새 스터디 채널과 역할(role) 생성"
-	case "recruit":
-		return "스터디 모집 메시지 게시(active study only)"
 	case "archive-study":
-		return "스터디 고유 역할(role)을 제거하고 채널을 아카이브(archive) 상태로 전환"
+		return "스터디 역할을 제거하고 채널을 아카이브 상태로 전환"
 	case "studies":
 		return "분기/상태 기준 스터디 목록 조회"
 	case "members":
-		return "role 을 사용하여 스터디에 속한 멤버 목록을 조회"
-	case "recruit-status":
-		return "현재 모집 이모지 반응 기준 신청 현황 조회"
-	case "recruit-close":
-		return "분기 모집 종료, 최종 신청자 role 부여, 미달 스터디 아카이브"
+		return "역할을 기준으로 스터디에 속한 멤버 목록 조회"
 	case "archive-all":
-		return "활성(active) 스터디 전체 아카이브"
+		return "활성 스터디 전체 아카이브"
+	case "suggest":
+		return "스터디 제안 등록"
+	case "study-nudge":
+		return "open 상태의 스터디 제안을 공지 채널에 알림"
 	default:
 		return cmd.Description
 	}

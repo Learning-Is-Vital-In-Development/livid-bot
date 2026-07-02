@@ -18,13 +18,13 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:                     "archive-study",
-		Description:              "Archive a specific study",
+		Description:              "스터디 하나를 아카이브합니다",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:         discordgo.ApplicationCommandOptionString,
 				Name:         "channel",
-				Description:  "Study channel to archive (autocomplete)",
+				Description:  "아카이브할 스터디 채널 (자동완성)",
 				Required:     true,
 				Autocomplete: true,
 			},
@@ -32,27 +32,27 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:                     "studies",
-		Description:              "List studies by branch/status",
+		Description:              "분기/상태별 스터디 목록을 봅니다",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        "branch",
-				Description: "Branch filter (YY-Q)",
+				Description: "분기 필터 (YY-Q)",
 				Required:    false,
 			},
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        "status",
-				Description: "Study status",
+				Description: "스터디 상태",
 				Required:    false,
 				Choices: []*discordgo.ApplicationCommandOptionChoice{
 					{
-						Name:  "active",
+						Name:  "활성",
 						Value: "active",
 					},
 					{
-						Name:  "archived",
+						Name:  "아카이브됨",
 						Value: "archived",
 					},
 				},
@@ -61,12 +61,12 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:        "members",
-		Description: "List active members of a study",
+		Description: "스터디의 활성 멤버 목록을 봅니다",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:         discordgo.ApplicationCommandOptionString,
 				Name:         "channel",
-				Description:  "Study channel (autocomplete)",
+				Description:  "스터디 채널 (자동완성)",
 				Required:     true,
 				Autocomplete: true,
 			},
@@ -74,13 +74,13 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:                     "archive-all",
-		Description:              "Archive all active studies",
+		Description:              "활성 스터디를 모두 아카이브합니다",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionBoolean,
 				Name:        "dry-run",
-				Description: "Preview archive-all without moving channels or changing DB",
+				Description: "채널 이동/DB 변경 없이 결과만 미리 봅니다",
 				Required:    false,
 			},
 		},

@@ -16,6 +16,10 @@ func createStudyResources(ctx context.Context, s *discordgo.Session, studyRepo *
 		return study.Study{}, fmt.Errorf("ensure active category: %w", err)
 	}
 
+	name, err = studyRepo.NextAvailableName(ctx, branch, name)
+	if err != nil {
+		return study.Study{}, fmt.Errorf("choose study name: %w", err)
+	}
 	channelName := uniqueStudyChannelName(buildStudyChannelName(branch, name), channels)
 	channel, err := s.GuildChannelCreateComplex(guildID, discordgo.GuildChannelCreateData{
 		Name:     channelName,

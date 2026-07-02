@@ -117,19 +117,19 @@ func newArchiveStudyHandler(studyRepo *db.StudyRepository) func(ctx context.Cont
 		st, err := studyRepo.FindByChannelID(ctx, channelID)
 		if err != nil {
 			slog.Error("failed to find study by channel", "channel_id", channelID, "error", err)
-			editDeferredError(ctx, s, i, "No study found for the selected channel.")
+			editDeferredError(ctx, s, i, "선택한 채널의 스터디를 찾을 수 없습니다.")
 			return
 		}
 
 		if st.Status != "active" {
-			editDeferredError(ctx, s, i, fmt.Sprintf("Study %q is already archived.", st.Name))
+			editDeferredError(ctx, s, i, fmt.Sprintf("%q 스터디는 이미 아카이브되었습니다.", st.Name))
 			return
 		}
 
 		result, err := archiveStudy(ctx, s, studyRepo, i.GuildID, st)
 		if err != nil {
 			slog.Error("failed to archive study", "study_id", st.ID, "study_name", st.Name, "error", err)
-			editDeferredError(ctx, s, i, fmt.Sprintf("Failed to archive study: %v", err))
+			editDeferredError(ctx, s, i, fmt.Sprintf("스터디 아카이브에 실패했습니다: %v", err))
 			return
 		}
 
@@ -179,12 +179,12 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Contex
 		studies, err := studyRepo.FindAllActive(ctx)
 		if err != nil {
 			slog.Error("failed to find active studies", "error", err)
-			editDeferredError(ctx, s, i, "Failed to load active studies.")
+			editDeferredError(ctx, s, i, "활성 스터디 목록을 불러오지 못했습니다.")
 			return
 		}
 
 		if len(studies) == 0 {
-			editDeferredError(ctx, s, i, "No active studies to archive.")
+			editDeferredError(ctx, s, i, "아카이브할 활성 스터디가 없습니다.")
 			return
 		}
 
@@ -192,7 +192,7 @@ func newArchiveAllHandler(studyRepo *db.StudyRepository) func(ctx context.Contex
 			allocator, err := newArchiveCategoryAllocator(ctx, s, i.GuildID)
 			if err != nil {
 				slog.Error("failed to prepare archive category allocator", "error", err)
-				editDeferredError(ctx, s, i, "Failed to prepare archive category.")
+				editDeferredError(ctx, s, i, "아카이브 카테고리를 준비하지 못했습니다.")
 				return
 			}
 			studyNames := make([]string, len(studies))
@@ -245,34 +245,34 @@ func rollbackChannelParent(ctx context.Context, s *discordgo.Session, channelID,
 
 func buildArchiveStudySuccessMessage(studyName string, result archiveResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Study **%s** has been archived", studyName)
+	fmt.Fprintf(&b, "**%s** 스터디를 아카이브했습니다", studyName)
 	if result.CategoryName != "" {
-		fmt.Fprintf(&b, " and moved to **%s**", result.CategoryName)
+		fmt.Fprintf(&b, " (**%s**로 이동)", result.CategoryName)
 	} else {
-		b.WriteString(" in DB")
+		b.WriteString(" (DB 상태만 변경)")
 	}
 	b.WriteString(".")
 	if result.Warning != "" {
-		fmt.Fprintf(&b, "\nWarning: %s.", result.Warning)
+		fmt.Fprintf(&b, "\n주의: %s.", result.Warning)
 	}
 	return truncateForDiscord(b.String(), discordMessageLimit)
 }
 
 func buildArchiveAllSummary(total, success int, failures []archiveFailure, warnings []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Archived **%d/%d** studies.", success, total)
+	fmt.Fprintf(&b, "스터디 **%d/%d**개를 아카이브했습니다.", success, total)
 
 	if len(failures) > 0 {
 		parts := make([]string, 0, len(failures))
 		for _, failure := range failures {
 			parts = append(parts, fmt.Sprintf("%s (%s)", failure.studyName, failure.reason))
 		}
-		b.WriteString("\nFailed: ")
+		b.WriteString("\n실패: ")
 		b.WriteString(strings.Join(parts, ", "))
 	}
 
 	if len(warnings) > 0 {
-		b.WriteString("\nWarnings: ")
+		b.WriteString("\n주의: ")
 		b.WriteString(strings.Join(warnings, ", "))
 	}
 
@@ -281,7 +281,7 @@ func buildArchiveAllSummary(total, success int, failures []archiveFailure, warni
 
 func buildArchiveAllDryRunSummary(studyNames []string, plan archiveDryRunPlan) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Dry run: **%d** active studies would be archived. No changes were made.", len(studyNames))
+	fmt.Fprintf(&b, "미리보기: 활성 스터디 **%d**개가 아카이브될 예정입니다. 실제 변경은 없습니다.", len(studyNames))
 
 	if len(plan.CategoryUseCounts) > 0 {
 		categoryNames := make([]string, 0, len(plan.CategoryUseCounts))
@@ -301,12 +301,12 @@ func buildArchiveAllDryRunSummary(studyNames []string, plan archiveDryRunPlan) s
 		for _, categoryName := range categoryNames {
 			parts = append(parts, fmt.Sprintf("%s (%d)", categoryName, plan.CategoryUseCounts[categoryName]))
 		}
-		b.WriteString("\nPlanned categories: ")
+		b.WriteString("\n예정 카테고리: ")
 		b.WriteString(strings.Join(parts, ", "))
 	}
 
 	if len(plan.CreatedCategories) > 0 {
-		b.WriteString("\nWould create: ")
+		b.WriteString("\n새로 만들 카테고리: ")
 		b.WriteString(strings.Join(plan.CreatedCategories, ", "))
 	}
 
@@ -315,12 +315,12 @@ func buildArchiveAllDryRunSummary(studyNames []string, plan archiveDryRunPlan) s
 		previewLimit = len(studyNames)
 	}
 	if previewLimit > 0 && len(plan.Assignments) >= previewLimit {
-		b.WriteString("\nPreview:\n")
+		b.WriteString("\n미리보기:\n")
 		for idx := 0; idx < previewLimit; idx++ {
 			fmt.Fprintf(&b, "%d. %s -> %s\n", idx+1, studyNames[idx], plan.Assignments[idx])
 		}
 		if len(studyNames) > previewLimit {
-			fmt.Fprintf(&b, "...and %d more", len(studyNames)-previewLimit)
+			fmt.Fprintf(&b, "...외 %d개", len(studyNames)-previewLimit)
 		}
 	}
 

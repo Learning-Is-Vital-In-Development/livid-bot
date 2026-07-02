@@ -13,15 +13,15 @@ import (
 
 func TestBuildArchiveStudySuccessMessage(t *testing.T) {
 	moved := buildArchiveStudySuccessMessage("study-a", archiveResult{CategoryName: "archive2"})
-	if moved != "Study **study-a** has been archived and moved to **archive2**." {
+	if moved != "**study-a** 스터디를 아카이브했습니다 (**archive2**로 이동)." {
 		t.Fatalf("unexpected moved message: %s", moved)
 	}
 
 	missing := buildArchiveStudySuccessMessage("study-b", archiveResult{Warning: "channel already missing; archived DB row only"})
-	if !strings.Contains(missing, "Study **study-b** has been archived in DB.") {
+	if !strings.Contains(missing, "**study-b** 스터디를 아카이브했습니다 (DB 상태만 변경).") {
 		t.Fatalf("expected DB-only archive message: %s", missing)
 	}
-	if !strings.Contains(missing, "Warning: channel already missing; archived DB row only.") {
+	if !strings.Contains(missing, "주의: channel already missing; archived DB row only.") {
 		t.Fatalf("expected missing-channel warning: %s", missing)
 	}
 }
@@ -54,13 +54,13 @@ func TestBuildArchiveAllSummary(t *testing.T) {
 
 	summary := buildArchiveAllSummary(5, 3, failures, warnings)
 
-	if !strings.Contains(summary, "Archived **3/5** studies.") {
+	if !strings.Contains(summary, "스터디 **3/5**개를 아카이브했습니다.") {
 		t.Fatalf("unexpected summary header: %s", summary)
 	}
 	if !strings.Contains(summary, "study-a (channel move failed)") {
 		t.Fatalf("expected first failure details in summary: %s", summary)
 	}
-	if !strings.Contains(summary, "Warnings: study-c: role deletion failed") {
+	if !strings.Contains(summary, "주의: study-c: role deletion failed") {
 		t.Fatalf("expected warnings in summary: %s", summary)
 	}
 }
@@ -87,13 +87,13 @@ func TestBuildArchiveAllDryRunSummary(t *testing.T) {
 
 	summary := buildArchiveAllDryRunSummary(studyNames, plan)
 
-	if !strings.Contains(summary, "Dry run: **3** active studies would be archived.") {
+	if !strings.Contains(summary, "미리보기: 활성 스터디 **3**개가 아카이브될 예정입니다.") {
 		t.Fatalf("unexpected dry-run header: %s", summary)
 	}
-	if !strings.Contains(summary, "Planned categories: archive2 (2), archive3 (1)") {
+	if !strings.Contains(summary, "예정 카테고리: archive2 (2), archive3 (1)") {
 		t.Fatalf("expected planned categories in summary: %s", summary)
 	}
-	if !strings.Contains(summary, "Would create: archive3") {
+	if !strings.Contains(summary, "새로 만들 카테고리: archive3") {
 		t.Fatalf("expected created category list in summary: %s", summary)
 	}
 	if !strings.Contains(summary, "1. study-a -> archive2") {
