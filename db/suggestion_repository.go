@@ -360,6 +360,51 @@ func (r *SuggestionRepository) MarkOpeningFailed(ctx context.Context, suggestion
 	return nil
 }
 
+func (r *SuggestionRepository) ListExpiredOpenSuggestions(ctx context.Context) ([]*StudySuggestion, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, COALESCE(period_id, 0), title, description, message_id, channel_id,
+		   vote_count, confirmed, visibility, COALESCE(proposer_user_id, ''),
+		   COALESCE(proposer_display_name, ''), threshold, expires_at, status, created_at
+		 FROM study_suggestions
+		 WHERE status = 'open' AND expires_at <= NOW()
+		 ORDER BY expires_at, created_at`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list expired open suggestions: %w", err)
+	}
+	defer rows.Close()
+
+	var suggestions []*StudySuggestion
+	for rows.Next() {
+		var p StudySuggestion
+		if err := rows.Scan(
+			&p.ID, &p.PeriodID, &p.Title, &p.Description, &p.MessageID, &p.ChannelID,
+			&p.VoteCount, &p.Confirmed, &p.Visibility, &p.ProposerUserID,
+			&p.ProposerDisplayName, &p.Threshold, &p.ExpiresAt, &p.Status, &p.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan expired open suggestion: %w", err)
+		}
+		suggestions = append(suggestions, &p)
+	}
+	return suggestions, rows.Err()
+}
+
+func (r *SuggestionRepository) MarkExpired(ctx context.Context, suggestionID int64) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE study_suggestions
+		 SET status = 'expired'
+		 WHERE id = $1 AND status = 'open'`,
+		suggestionID,
+	)
+	if err != nil {
+		return fmt.Errorf("mark suggestion expired: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrSuggestionNotFound
+	}
+	return nil
+}
+
 func uniqueNonEmpty(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))

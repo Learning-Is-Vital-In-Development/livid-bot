@@ -107,6 +107,10 @@ func Run(cfg Config) error {
 		return fmt.Errorf("sync commands: %w", err)
 	}
 
+	expiryCtx, stopExpiryNotifier := context.WithCancel(context.Background())
+	defer stopExpiryNotifier()
+	startSuggestionExpiryNotifier(expiryCtx, discord, cfg.SuggestionRepo)
+
 	slog.Info("bot running; press CTRL + C to exit")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

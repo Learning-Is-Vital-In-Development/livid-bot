@@ -202,9 +202,42 @@ func TestMarkSuggestionOpenedAndOpeningFailed(t *testing.T) {
 	}
 	stored, err = repo.GetSuggestion(ctx, failed.ID)
 	if err != nil {
-		t.Fatalf("load failed suggestion: %v", err)
+		t.Fatalf("load failed: %v", err)
 	}
 	if stored == nil || stored.Status != "opening_failed" {
 		t.Fatalf("expected opening_failed suggestion, got %+v", stored)
+	}
+}
+
+func TestListExpiredOpenSuggestionsAndMarkExpired(t *testing.T) {
+	tdb := newTestDatabase(t)
+	repo := NewSuggestionRepository(tdb.Pool)
+	ctx := context.Background()
+
+	expired, err := repo.CreateSuggestion(ctx, CreateSuggestionParams{Title: "Expired", Description: "", MessageID: "expired-message", ChannelID: "expired-thread", ExpiresAt: time.Now().Add(-time.Hour)})
+	if err != nil {
+		t.Fatalf("create expired suggestion: %v", err)
+	}
+	if _, err := repo.CreateSuggestion(ctx, CreateSuggestionParams{Title: "Open", Description: "", MessageID: "open-message", ChannelID: "open-thread", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatalf("create open suggestion: %v", err)
+	}
+
+	suggestions, err := repo.ListExpiredOpenSuggestions(ctx)
+	if err != nil {
+		t.Fatalf("list expired suggestions: %v", err)
+	}
+	if len(suggestions) != 1 || suggestions[0].ID != expired.ID {
+		t.Fatalf("expected only expired suggestion %d, got %+v", expired.ID, suggestions)
+	}
+
+	if err := repo.MarkExpired(ctx, expired.ID); err != nil {
+		t.Fatalf("mark expired: %v", err)
+	}
+	stored, err := repo.GetSuggestion(ctx, expired.ID)
+	if err != nil {
+		t.Fatalf("load expired suggestion: %v", err)
+	}
+	if stored == nil || stored.Status != "expired" {
+		t.Fatalf("expected expired suggestion, got %+v", stored)
 	}
 }
