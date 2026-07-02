@@ -50,13 +50,20 @@ func runSuggestionExpiryCheck(ctx context.Context, client suggestionExpiryDiscor
 		if suggestion == nil || suggestion.ID == 0 || suggestion.ChannelID == "" {
 			continue
 		}
-		if _, err := client.ChannelMessageSend(suggestion.ChannelID, buildSuggestionExpiredMessage(), discordgo.WithContext(ctx)); err != nil {
+		msg, err := client.ChannelMessageSend(suggestion.ChannelID, buildSuggestionExpiredMessage(), discordgo.WithContext(ctx))
+		if err != nil {
 			slog.Error("failed to send suggestion expiry notice", "suggestion_id", suggestion.ID, "channel_id", suggestion.ChannelID, "error", err)
 			continue
 		}
-		if err := store.MarkExpired(ctx, suggestion.ID); err != nil {
-			slog.Error("failed to mark suggestion expired", "suggestion_id", suggestion.ID, "error", err)
+		messageID := ""
+		if msg != nil {
+			messageID = msg.ID
 		}
+		if err := store.MarkExpired(ctx, suggestion.ID); err != nil {
+			slog.Error("failed to mark suggestion expired", "suggestion_id", suggestion.ID, "channel_id", suggestion.ChannelID, "message_id", messageID, "error", err)
+			continue
+		}
+		slog.Info("sent suggestion expiry notice", "suggestion_id", suggestion.ID, "channel_id", suggestion.ChannelID, "message_id", messageID)
 	}
 }
 

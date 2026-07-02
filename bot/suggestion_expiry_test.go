@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -47,6 +49,10 @@ func (c *fakeSuggestionExpiryClient) ChannelMessageSend(channelID, content strin
 func TestRunSuggestionExpiryCheckCommentsAndMarksExpired(t *testing.T) {
 	store := &fakeExpiredSuggestionStore{suggestions: []*db.StudySuggestion{{ID: 7, ChannelID: "thread-1"}}}
 	client := &fakeSuggestionExpiryClient{}
+	var logs bytes.Buffer
+	oldLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(oldLogger)
 
 	runSuggestionExpiryCheck(context.Background(), client, store)
 
@@ -61,6 +67,11 @@ func TestRunSuggestionExpiryCheckCommentsAndMarksExpired(t *testing.T) {
 	}
 	if len(store.marked) != 1 || store.marked[0] != 7 {
 		t.Fatalf("expected suggestion 7 marked expired, got %v", store.marked)
+	}
+	for _, want := range []string{"sent suggestion expiry notice", "suggestion_id=7", "channel_id=thread-1", "message_id=message-1"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("expected %q in success log, got %s", want, logs.String())
+		}
 	}
 }
 
