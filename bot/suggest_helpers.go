@@ -23,6 +23,8 @@ const (
 	suggestionVisibilityPublic      = "public"
 	suggestionDefaultDurationDays   = 14
 	suggestionMaxDurationDays       = 90
+	suggestionMessageContentLimit   = 2000
+	suggestionDescriptionMaxLength  = 1700
 )
 
 type suggestionModalOptions struct {

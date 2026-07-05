@@ -57,11 +57,12 @@ func newSuggestHandler(suggestionRepo suggestionStore, suggestionChannelID strin
 					}},
 					discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:  "description",
-							Label:     "한줄 설명",
-							Style:     discordgo.TextInputShort,
-							Required:  false,
-							MaxLength: 200,
+							CustomID:    "description",
+							Label:       "상세 설명",
+							Style:       discordgo.TextInputParagraph,
+							Placeholder: "스터디 목표, 진행 방식, 추천 대상 등을 가능한 자세히 적어주세요.",
+							Required:    false,
+							MaxLength:   suggestionDescriptionMaxLength,
 						},
 					}},
 				},

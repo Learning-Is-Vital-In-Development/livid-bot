@@ -37,6 +37,12 @@ func TestCommandsExposeSuggestionFlowOnly(t *testing.T) {
 	if suggestCmd.Options[0].Name != "visibility" || !suggestCmd.Options[0].Required {
 		t.Fatalf("expected required visibility option, got %+v", suggestCmd.Options[0])
 	}
+	if suggestCmd.Options[1].Name != "threshold" || suggestCmd.Options[1].Required {
+		t.Fatalf("expected optional threshold option, got %+v", suggestCmd.Options[1])
+	}
+	if suggestCmd.Options[2].Name != "duration_days" || suggestCmd.Options[2].Required {
+		t.Fatalf("expected optional duration_days option, got %+v", suggestCmd.Options[2])
+	}
 
 	nudgeCmd := byName["study-nudge"]
 	if nudgeCmd == nil {

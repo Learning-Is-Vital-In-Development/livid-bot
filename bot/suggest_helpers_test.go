@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -29,6 +30,18 @@ func TestBuildSuggestionMessage(t *testing.T) {
 	}
 	if !strings.Contains(withoutDescription, "제안자: <@user-1>") {
 		t.Fatalf("expected public proposer in suggestion message, got: %s", withoutDescription)
+	}
+}
+
+func TestBuildSuggestionMessageFitsDiscordContentLimitWithMaxDescription(t *testing.T) {
+	expiresAt := time.Date(2026, 3, 26, 23, 59, 59, 0, suggestionDeadlineLocation)
+	message := buildSuggestionMessage(
+		strings.Repeat("가", 100),
+		strings.Repeat("나", suggestionDescriptionMaxLength),
+		suggestionPostOptions{Visibility: suggestionVisibilityPublic, ProposerUserID: "123456789012345678", Threshold: 3, ExpiresAt: expiresAt},
+	)
+	if utf8.RuneCountInString(message) > suggestionMessageContentLimit {
+		t.Fatalf("suggestion message exceeds Discord content limit: %d", utf8.RuneCountInString(message))
 	}
 }
 

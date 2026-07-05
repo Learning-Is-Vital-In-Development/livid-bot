@@ -132,5 +132,33 @@ func (h *SuggestionReactionHandler) openConfirmedSuggestion(ctx context.Context,
 	); err != nil {
 		slog.Warn("failed to send suggestion study open notice", "channel_id", created.ChannelID, "error", err)
 	}
+	if err := sendSuggestionOpenedNotice(ctx, s, guildID, result.ChannelID, result.MessageID, created.ChannelID); err != nil {
+		slog.Warn("failed to send original suggestion open notice", "suggestion_id", result.SuggestionID, "channel_id", result.ChannelID, "message_id", result.MessageID, "error", err)
+	}
 	return nil
+}
+
+type suggestionOpenedNoticeClient interface {
+	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error)
+}
+
+func sendSuggestionOpenedNotice(ctx context.Context, client suggestionOpenedNoticeClient, guildID, suggestionChannelID, suggestionMessageID, studyChannelID string) error {
+	data := &discordgo.MessageSend{
+		Content:         buildSuggestionOpenedNotice(studyChannelID),
+		AllowedMentions: &discordgo.MessageAllowedMentions{},
+	}
+	if suggestionMessageID != "" {
+		data.Reference = &discordgo.MessageReference{
+			GuildID:         guildID,
+			ChannelID:       suggestionChannelID,
+			MessageID:       suggestionMessageID,
+			FailIfNotExists: boolPtr(false),
+		}
+	}
+	_, err := client.ChannelMessageSendComplex(suggestionChannelID, data, discordgo.WithContext(ctx))
+	return err
+}
+
+func buildSuggestionOpenedNotice(studyChannelID string) string {
+	return fmt.Sprintf("✅ 스터디 채널이 생성되었습니다.\n\n이후 참여와 진행 논의는 <#%s>에서 이어가주세요.", studyChannelID)
 }
