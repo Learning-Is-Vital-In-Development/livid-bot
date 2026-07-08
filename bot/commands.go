@@ -121,4 +121,16 @@ var commands = []*discordgo.ApplicationCommand{
 		Description:              "open 상태의 스터디 제안을 공지 채널에 알립니다",
 		DefaultMemberPermissions: int64Ptr(discordgo.PermissionAdministrator),
 	},
+	{
+		Name:        "study-invite",
+		Description: "현재 스터디 채널에 새 참여자를 초대합니다",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionUser,
+				Name:        "user",
+				Description: "초대할 사용자",
+				Required:    true,
+			},
+		},
+	},
 }

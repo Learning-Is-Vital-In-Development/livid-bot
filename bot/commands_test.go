@@ -50,6 +50,17 @@ func TestCommandsExposeSuggestionFlowOnly(t *testing.T) {
 	}
 	assertAdminCommand(t, nudgeCmd)
 
+	inviteCmd := byName["study-invite"]
+	if inviteCmd == nil {
+		t.Fatal("expected /study-invite command to exist")
+	}
+	if inviteCmd.DefaultMemberPermissions != nil {
+		t.Fatalf("expected /study-invite to rely on handler authorization, got default permissions %v", inviteCmd.DefaultMemberPermissions)
+	}
+	if len(inviteCmd.Options) != 1 || inviteCmd.Options[0].Name != "user" || inviteCmd.Options[0].Type != discordgo.ApplicationCommandOptionUser || !inviteCmd.Options[0].Required {
+		t.Fatalf("expected /study-invite to require one user option, got %+v", inviteCmd.Options)
+	}
+
 	for _, name := range []string{"help", "archive-study", "archive-all", "studies", "members"} {
 		if byName[name] == nil {
 			t.Fatalf("expected /%s command to remain available", name)

@@ -54,6 +54,7 @@ func Run(cfg Config) error {
 		"archive-all":   newArchiveAllHandler(cfg.StudyRepo),
 		"suggest":       newSuggestHandler(cfg.SuggestionRepo, cfg.SuggestionChannelID),
 		"study-nudge":   newStudyNudgeHandler(cfg.SuggestionRepo, cfg.StudyNudgeAnnouncementChannelID),
+		"study-invite":  newStudyInviteHandler(cfg.StudyRepo, cfg.MemberRepo),
 	}
 	autocompleteHandlers := map[string]func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate){
 		"help":          handleHelpAutocomplete,

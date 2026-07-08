@@ -41,6 +41,7 @@ func TestDiscordRESTCallsUseActiveContext(t *testing.T) {
 		"handler_help.go",
 		"handler_members.go",
 		"handler_studies.go",
+		"handler_study_invite.go",
 		"handler_suggest.go",
 		"handler_study_nudge.go",
 		"helpers.go",
